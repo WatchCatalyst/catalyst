@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Briefcase, Plus, X, TrendingUp, DollarSign, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 import { getCategoryColor } from "@/lib/category-colors"
 
 type PortfolioAsset = {
@@ -41,72 +40,25 @@ export function PortfolioManager({ onPortfolioChange }: PortfolioManagerProps) {
   })
   const [isOpen, setIsOpen] = useState(false)
   const { toast } = useToast()
-  const supabase = createClient()
-  const [user, setUser] = useState<any>(null)
 
   useEffect(() => {
     loadPortfolio()
   }, [])
 
-  const loadPortfolio = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    setUser(user)
-
-    if (user) {
-      const { data } = await supabase.from("portfolio").select("symbol, type, quantity, avg_price, notes")
-
-      if (data) {
-        setPortfolio(
-          data.map((item) => ({
-            symbol: item.symbol,
-            type: item.type,
-            quantity: item.quantity,
-            avgPrice: item.avg_price,
-            notes: item.notes,
-          })),
-        )
-      }
-    } else {
-      const savedPortfolio = localStorage.getItem("watchcatalyst-portfolio")
-      if (savedPortfolio) {
-        setPortfolio(JSON.parse(savedPortfolio))
-      }
+  const loadPortfolio = () => {
+    const savedPortfolio = localStorage.getItem("watchcatalyst-portfolio")
+    if (savedPortfolio) {
+      setPortfolio(JSON.parse(savedPortfolio))
     }
   }
 
-  const savePortfolio = async (updatedPortfolio: PortfolioAsset[]) => {
+  const savePortfolio = (updatedPortfolio: PortfolioAsset[]) => {
     localStorage.setItem("watchcatalyst-portfolio", JSON.stringify(updatedPortfolio))
-
-    if (user) {
-      await supabase.from("portfolio").delete().eq("user_id", user.id)
-
-      if (updatedPortfolio.length > 0) {
-        const { error } = await supabase.from("portfolio").insert(
-          updatedPortfolio.map((asset) => ({
-            user_id: user.id,
-            symbol: asset.symbol,
-            type: asset.type,
-            quantity: asset.quantity,
-            avg_price: asset.avgPrice,
-            notes: asset.notes,
-          })),
-        )
-
-        if (error) {
-          console.error("Error saving portfolio:", error)
-          toast({ title: "Portfolio saved locally (Cloud sync failed)", variant: "destructive" })
-          return
-        }
-      }
-    }
-
     onPortfolioChange?.(updatedPortfolio)
-    toast({ title: user ? "Portfolio synced to cloud" : "Portfolio saved locally" })
+    toast({ title: "Portfolio saved" })
   }
 
-  const addAsset = async () => {
+  const addAsset = () => {
     if (newAsset.symbol.trim() && !portfolio.some((a) => a.symbol === newAsset.symbol.toUpperCase())) {
       const updatedPortfolio = [
         ...portfolio,
@@ -116,7 +68,7 @@ export function PortfolioManager({ onPortfolioChange }: PortfolioManagerProps) {
         },
       ]
       setPortfolio(updatedPortfolio)
-      await savePortfolio(updatedPortfolio)
+      savePortfolio(updatedPortfolio)
       setNewAsset({
         symbol: "",
         type: "crypto",

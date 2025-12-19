@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Calendar, ExternalLink, Loader2 } from "lucide-react"
 import { getCalendarEvents } from "@/app/actions/get-calendar-events"
 import { CatalystPlaybook } from "@/components/catalyst-playbook"
+import { getMockUpcomingEvents, mapEventToTopic } from "@/lib/calendar-service"
 
 type EventType = "economic" | "crypto"
 type Importance = "high" | "medium" | "low"
@@ -23,6 +24,7 @@ interface CalendarEvent {
   ticker?: string // BTC, ETH, etc.
   marketHours?: MarketHours
   isUS?: boolean
+  topic?: string // MarketTopic for playbook routing
 }
 
 function getMarketHoursBadge(marketHours?: MarketHours) {
@@ -55,11 +57,21 @@ export function CatalystCalendar() {
         const data = await getCalendarEvents()
         // @ts-ignore - type mismatch on strict string literals vs string is fine for now
         if (data && data.length > 0) {
+          // Map events to topics and ensure all have topics
+          const eventsWithTopics = data.map((event) => ({
+            ...event,
+            topic: event.topic || mapEventToTopic(event.title),
+          }))
           // @ts-ignore
-          setEvents(data)
+          setEvents(eventsWithTopics)
+        } else {
+          // If no data from API, use mock events
+          setEvents(getMockUpcomingEvents())
         }
       } catch (error) {
         console.error("Failed to load calendar events", error)
+        // On error, show mock events so calendar isn't empty
+        setEvents(getMockUpcomingEvents())
       } finally {
         setLoading(false)
       }
@@ -159,65 +171,76 @@ export function CatalystCalendar() {
                   </div>
                 )}
                 {dayEvents.map((event) => (
-                  <div
+                  <CatalystPlaybook
                     key={event.id}
-                    className="p-3 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors group"
-                  >
-                    <div className="flex items-start justify-between gap-3 mb-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-mono text-muted-foreground">{event.time}</span>
-                        {event.importance === "high" && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" title="High Impact" />
-                        )}
-                        {getMarketHoursBadge(event.marketHours)}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                          <CatalystPlaybook item={event} type="calendar" />
+                    item={event}
+                    type="calendar"
+                    trigger={
+                      <div
+                        className={`p-3 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors cursor-pointer ${
+                          event.importance === "high" ? "bg-red-500/5 hover:bg-red-500/10" : ""
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-mono text-muted-foreground">{event.time}</span>
+                            {event.importance === "high" && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" title="High Impact" />
+                            )}
+                            {getMarketHoursBadge(event.marketHours)}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+
+
+                            {event.type === "crypto" && event.ticker && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded border border-blue-500/20">
+                                {event.ticker}
+                              </span>
+                            )}
+                            {event.type === "economic" && event.currency && (
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                  event.isUS
+                                    ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                    : "bg-green-500/10 text-green-500 border-green-500/20"
+                                }`}
+                              >
+                                {event.currency}
+                              </span>
+                            )}
+                          </div>
                         </div>
 
-                        {event.type === "crypto" && event.ticker && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded border border-blue-500/20">
-                            {event.ticker}
-                          </span>
-                        )}
-                        {event.type === "economic" && event.currency && (
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                            event.isUS 
-                              ? "bg-green-500/10 text-green-500 border-green-500/20" 
-                              : "bg-green-500/10 text-green-500 border-green-500/20"
-                          }`}>
-                            {event.currency}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                        <p className={`text-sm font-medium leading-snug mb-1.5 ${
+                          event.isUS ? "text-foreground" : "text-foreground"
+                        }`}>
+                          {event.title}
+                        </p>
 
-                    <p className={`text-sm font-medium leading-snug mb-1.5 ${
-                      event.isUS ? "text-foreground" : "text-foreground"
-                    }`}>
-                      {event.title}
-                    </p>
-
-                    <div className="flex items-center justify-between">
-                      {event.forecast ? (
-                        <div className="flex gap-3 text-xs">
-                          <span className="text-muted-foreground">
-                            Fcst: <span className="text-foreground">{event.forecast}</span>
-                          </span>
-                          {event.actual && (
-                            <span className="text-muted-foreground">
-                              Act: <span className="font-bold text-foreground">{event.actual}</span>
-                            </span>
+                        <div className="flex items-center justify-between">
+                          {event.forecast ? (
+                            <div className="flex gap-3 text-xs">
+                              <span className="text-muted-foreground">
+                                Fcst: <span className="text-foreground">{event.forecast}</span>
+                              </span>
+                              {event.actual && (
+                                <span className="text-muted-foreground">
+                                  Act: <span className="font-bold text-foreground">{event.actual}</span>
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            sortedDateKeys.length === 1 && (
+                              <div className="text-xs text-muted-foreground capitalize">{displayDate}</div>
+                            )
                           )}
+                          <span className="text-xs text-accent-bright opacity-70">
+                            View Playbook →
+                          </span>
                         </div>
-                      ) : (
-                        sortedDateKeys.length === 1 && (
-                          <div className="text-xs text-muted-foreground capitalize">{displayDate}</div>
-                        )
-                      )}
-                    </div>
-                  </div>
+                      </div>
+                    }
+                  />
                 ))}
               </div>
             )

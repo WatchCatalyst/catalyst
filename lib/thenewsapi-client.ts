@@ -83,12 +83,85 @@ export async function fetchTheNewsAPIArticles(
   const data = await response.json()
   let articles = data.data || []
 
+  // Comprehensive filter to exclude all Indian news
+  const indianDomains = [
+    ".in",
+    "indiatoday",
+    "timesofindia",
+    "hindustantimes",
+    "thehindu",
+    "ndtv",
+    "indianexpress",
+    "economictimes",
+    "mint",
+    "business-standard",
+    "zeebiz",
+    "moneycontrol",
+    "livemint",
+    "firstpost",
+  ]
+
+  const indianKeywords = [
+    "india",
+    "indian",
+    "mumbai",
+    "delhi",
+    "bangalore",
+    "chennai",
+    "kolkata",
+    "hyderabad",
+    "pune",
+    "rupee",
+    "sensex",
+    "nifty",
+    "bse",
+    "nse",
+  ]
+
+  const initialCount = articles.length
   articles = articles.filter((article: any) => {
-    if (!article.url) return true
-    return !article.url.includes("indiatoday.intoday.in")
+    // Check URL domain
+    if (article.url) {
+      const url = article.url.toLowerCase()
+      if (indianDomains.some((domain) => url.includes(domain))) {
+        return false
+      }
+    }
+
+    // Check source name
+    if (article.source) {
+      const source = article.source.toLowerCase()
+      if (indianDomains.some((domain) => source.includes(domain))) {
+        return false
+      }
+      if (indianKeywords.some((keyword) => source.includes(keyword))) {
+        return false
+      }
+    }
+
+    // Check title for strong Indian indicators
+    if (article.title) {
+      const title = article.title.toLowerCase()
+      // Only filter if title contains multiple Indian indicators (to avoid false positives)
+      const indianMatches = indianKeywords.filter((keyword) => title.includes(keyword)).length
+      if (indianMatches >= 2) {
+        return false
+      }
+      // Always filter if title mentions rupee, sensex, nifty (market-specific)
+      if (title.includes("rupee") || title.includes("sensex") || title.includes("nifty")) {
+        return false
+      }
+    }
+
+    return true
   })
 
-  console.log("[v0] TheNewsAPI returned", articles.length, "real-time articles for timeRange:", timeRange)
+  const filteredCount = initialCount - articles.length
+  if (filteredCount > 0) {
+    console.log(`[v0] Filtered out ${filteredCount} Indian news articles`)
+  }
+
+  console.log("[v0] TheNewsAPI returned", articles.length, "real-time articles (after Indian news filter) for timeRange:", timeRange)
 
   if (articles.length > 0 && articles[0].published_at) {
     const firstArticleDate = new Date(articles[0].published_at)

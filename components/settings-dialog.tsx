@@ -15,9 +15,9 @@ import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Settings, Plus, X } from "lucide-react"
+import { Slider } from "@/components/ui/slider"
 import type { NewsCategory } from "@/app/page"
 import { useToast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 
 type NotificationPreferences = {
   enabled: boolean
@@ -43,113 +43,43 @@ export function SettingsDialog() {
   const [newAsset, setNewAsset] = useState({ symbol: "", type: "crypto" as "crypto" | "stock" })
   const { toast } = useToast()
 
-  const supabase = createClient()
-  const [user, setUser] = useState<any>(null)
-
   useEffect(() => {
-    const loadSettings = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setUser(user)
-
-      if (user) {
-        // Load settings from Supabase
-        const { data: settingsData } = await supabase
-          .from("user_settings")
-          .select("preferences")
-          .eq("user_id", user.id)
-          .single()
-
-        if (settingsData?.preferences) {
-          const prefs = settingsData.preferences
-          setPreferences({
-            ...prefs,
-            categories: new Set(prefs.categories),
-          })
-        }
-
-        // Load portfolio from Supabase
-        const { data: portfolioData } = await supabase.from("portfolio").select("symbol, type")
-
-        if (portfolioData) {
-          setPortfolio(portfolioData)
-        }
-      } else {
-        // Load saved preferences from Local Storage
-        const savedPrefs = localStorage.getItem("watchcatalyst-preferences")
-        if (savedPrefs) {
-          const parsed = JSON.parse(savedPrefs)
-          setPreferences({
-            ...parsed,
-            categories: new Set(parsed.categories),
-          })
-        }
-
-        const savedPortfolio = localStorage.getItem("watchcatalyst-portfolio")
-        if (savedPortfolio) {
-          setPortfolio(JSON.parse(savedPortfolio))
-        }
-      }
+    // Load saved preferences from Local Storage
+    const savedPrefs = localStorage.getItem("watchcatalyst-preferences")
+    if (savedPrefs) {
+      const parsed = JSON.parse(savedPrefs)
+      setPreferences({
+        ...parsed,
+        categories: new Set(parsed.categories),
+      })
     }
 
-    loadSettings()
+    const savedPortfolio = localStorage.getItem("watchcatalyst-portfolio")
+    if (savedPortfolio) {
+      setPortfolio(JSON.parse(savedPortfolio))
+    }
   }, [])
 
-  const savePreferences = async () => {
+  const savePreferences = () => {
     const prefsToSave = {
       ...preferences,
       categories: Array.from(preferences.categories),
     }
 
     localStorage.setItem("watchcatalyst-preferences", JSON.stringify(prefsToSave))
-
-    if (user) {
-      const { error } = await supabase.from("user_settings").upsert({
-        user_id: user.id,
-        preferences: prefsToSave,
-        updated_at: new Date().toISOString(),
-      })
-
-      if (error) {
-        console.error("Error saving preferences to cloud:", error)
-        toast({ title: "Saved locally (Cloud sync failed)", variant: "destructive" })
-        return
-      }
-    }
-
-    toast({ title: user ? "Preferences saved to cloud" : "Preferences saved locally" })
+    
+    // Dispatch custom event to notify other components (same-tab)
+    window.dispatchEvent(new Event("preferences-updated"))
+    
+    toast({ title: "Preferences saved" })
   }
 
-  const savePortfolio = async () => {
+  // Portfolio is now auto-saved on add/remove, so this function is no longer needed
+  // Keeping it for backwards compatibility but it's redundant
+  const savePortfolio = () => {
     localStorage.setItem("watchcatalyst-portfolio", JSON.stringify(portfolio))
-
-    if (user) {
-      // For portfolio, we'll do a full replace for simplicity: delete all then insert all
-      // In a real app with large data, you'd want to diff changes.
-
-      // 1. Delete existing
-      await supabase.from("portfolio").delete().eq("user_id", user.id)
-
-      // 2. Insert new
-      if (portfolio.length > 0) {
-        const { error } = await supabase.from("portfolio").insert(
-          portfolio.map((asset) => ({
-            user_id: user.id,
-            symbol: asset.symbol,
-            type: asset.type,
-          })),
-        )
-
-        if (error) {
-          console.error("Error saving portfolio to cloud:", error)
-          toast({ title: "Saved locally (Cloud sync failed)", variant: "destructive" })
-          return
-        }
-      }
-    }
-
-    toast({ title: user ? "Portfolio updated to cloud" : "Portfolio updated locally" })
+    window.dispatchEvent(new Event("portfolio-updated"))
+    toast({ title: "Watchlist saved" })
   }
 
   const toggleCategory = (category: NewsCategory) => {
@@ -180,14 +110,45 @@ export function SettingsDialog() {
   }
 
   const addAsset = () => {
-    if (newAsset.symbol.trim() && !portfolio.some((a) => a.symbol === newAsset.symbol.toUpperCase())) {
-      setPortfolio([...portfolio, { symbol: newAsset.symbol.toUpperCase(), type: newAsset.type }])
-      setNewAsset({ symbol: "", type: "crypto" })
+    const input = newAsset.symbol.trim().toUpperCase()
+    if (!input) return
+
+    // Support comma-separated symbols (e.g., "AAPL, BTC, TSLA")
+    const symbols = input
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+
+    const newAssets: PortfolioAsset[] = []
+    for (const symbol of symbols) {
+      // Prevent duplicates
+      if (!portfolio.some((a) => a.symbol === symbol)) {
+        // Auto-detect type: common crypto symbols default to crypto, else stock
+        const isCrypto = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "MATIC", "DOT", "AVAX", "LINK", "UNI", "ATOM", "ALGO"].includes(symbol)
+        newAssets.push({ symbol, type: isCrypto ? "crypto" : "stock" })
+      }
+    }
+
+    if (newAssets.length > 0) {
+      const updatedPortfolio = [...portfolio, ...newAssets]
+      setPortfolio(updatedPortfolio)
+      // Auto-save immediately
+      localStorage.setItem("watchcatalyst-portfolio", JSON.stringify(updatedPortfolio))
+      window.dispatchEvent(new Event("portfolio-updated"))
+      toast({ title: `Added ${newAssets.length} symbol(s) to watchlist` })
+      setNewAsset({ symbol: "", type: "stock" })
+    } else {
+      toast({ title: "Symbol(s) already in watchlist or invalid", variant: "destructive" })
     }
   }
 
   const removeAsset = (symbol: string) => {
-    setPortfolio(portfolio.filter((a) => a.symbol !== symbol))
+    const updatedPortfolio = portfolio.filter((a) => a.symbol !== symbol)
+    setPortfolio(updatedPortfolio)
+    // Auto-save immediately
+    localStorage.setItem("watchcatalyst-portfolio", JSON.stringify(updatedPortfolio))
+    window.dispatchEvent(new Event("portfolio-updated"))
+    toast({ title: "Removed from watchlist" })
   }
 
   const categories: { value: NewsCategory; label: string }[] = [
@@ -271,49 +232,85 @@ export function SettingsDialog() {
             </div>
           </div>
 
-          {/* Portfolio Tracking */}
+          {/* Minimum Relevance Score */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Portfolio Tracking</h3>
-            <p className="text-xs text-muted-foreground">Add assets to prioritize relevant news</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="min-relevance-score">Minimum Relevance Score</Label>
+                <span className="text-sm font-medium text-foreground">{preferences.minRelevanceScore}</span>
+              </div>
+              <Slider
+                id="min-relevance-score"
+                min={0}
+                max={100}
+                step={5}
+                value={[preferences.minRelevanceScore]}
+                onValueChange={(values) => {
+                  const newScore = values[0]
+                  const updatedPrefs = { ...preferences, minRelevanceScore: newScore }
+                  setPreferences(updatedPrefs)
+                  // Update localStorage immediately for instant filtering
+                  const prefsToSave = {
+                    ...updatedPrefs,
+                    categories: Array.from(updatedPrefs.categories),
+                  }
+                  localStorage.setItem("watchcatalyst-preferences", JSON.stringify(prefsToSave))
+                  // Dispatch custom event to notify main page
+                  window.dispatchEvent(new Event("preferences-updated"))
+                }}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                Only show articles with relevance score ≥ {preferences.minRelevanceScore}. Higher scores show more
+                market-moving news.
+              </p>
+            </div>
+          </div>
+
+          {/* Your Watchlist */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Your Watchlist</h3>
+              <p className="text-xs text-muted-foreground">
+                Add symbols to prioritize news about your holdings. Articles matching your watchlist will bypass relevance filters.
+              </p>
+            </div>
             <div className="flex gap-2">
               <Input
-                placeholder="Symbol (e.g., BTC, AAPL)"
+                placeholder="Add symbol... (e.g., AAPL, BTC, TSLA or comma-separated)"
                 value={newAsset.symbol}
                 onChange={(e) => setNewAsset({ ...newAsset, symbol: e.target.value })}
                 onKeyDown={(e) => e.key === "Enter" && addAsset()}
                 className="flex-1"
               />
-              <select
-                value={newAsset.type}
-                onChange={(e) => setNewAsset({ ...newAsset, type: e.target.value as "crypto" | "stock" })}
-                className="px-3 py-2 rounded-md border border-border bg-background text-sm"
-              >
-                <option value="crypto">Crypto</option>
-                <option value="stock">Stock</option>
-              </select>
               <Button onClick={addAsset} size="sm">
                 <Plus className="h-4 w-4" />
+                Add
               </Button>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {portfolio.map((asset) => (
-                <Badge key={asset.symbol} variant="outline" className="gap-2">
-                  ${asset.symbol}
-                  <span className="text-xs text-muted-foreground capitalize">({asset.type})</span>
-                  <button onClick={() => removeAsset(asset.symbol)}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
+            {portfolio.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {portfolio.map((asset) => (
+                  <Badge key={asset.symbol} variant="outline" className="gap-1.5 pr-1">
+                    <span className="font-medium">${asset.symbol}</span>
+                    <button
+                      onClick={() => removeAsset(asset.symbol)}
+                      className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                      aria-label={`Remove ${asset.symbol}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">No symbols in watchlist. Add symbols above.</p>
+            )}
           </div>
 
           <div className="flex gap-2">
             <Button onClick={savePreferences} className="flex-1">
               Save Preferences
-            </Button>
-            <Button onClick={savePortfolio} variant="outline" className="flex-1 bg-transparent">
-              Save Portfolio
             </Button>
           </div>
         </div>

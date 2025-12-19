@@ -4,10 +4,10 @@ import { deduplicateArticles } from "@/lib/article-deduplication"
 import { getSourceQuality } from "@/lib/source-quality"
 import { fetchTheNewsAPIArticles, type TheNewsAPIArticle } from "@/lib/thenewsapi-client"
 import { getCachedNews, setCachedNews, clearExpiredCache } from "@/lib/news-cache"
-import { classifyArticleForMarkets, type MarketClassification } from "@/lib/market-relevance-classifier"
+import { classifyArticle, type ClassificationResult } from "@/lib/market-relevance-classifier"
 
 type NewsItemWithClassification = NewsItem & {
-  classification?: MarketClassification
+  classification?: ClassificationResult
 }
 
 function getESTTime(): Date {
@@ -214,68 +214,123 @@ async function fetchFromTheNewsAPI(
 ): Promise<NewsItemWithClassification[]> {
   const articles = await fetchTheNewsAPIArticles(category, apiKey, page, timeRange)
 
-  const newsItems: NewsItemWithClassification[] = articles.map((article: TheNewsAPIArticle, index: number) => {
-    const analysis = analyzeNewsSentiment(article.title || "", article.description || "")
+  console.log(`[v0] Processing ${articles.length} articles with LLM classification...`)
 
-    let keywords: string[] = []
-    if (Array.isArray(article.keywords)) {
-      keywords = article.keywords
-    } else if (typeof article.keywords === "string") {
-      // Handle case where keywords might be a comma-separated string
-      keywords = (article.keywords as string).split(",").map((k) => k.trim())
-    }
+  // Process classifications in parallel chunks (8 at a time to avoid rate limits)
+  const CHUNK_SIZE = 8
+  const classificationResults: ClassificationResult[] = []
 
-    const detectedCategory = mapTheNewsAPICategory(article.categories || [], category)
-    const actualTimestamp = article.published_at ? new Date(article.published_at) : new Date()
-    const minutesOld = Math.round((Date.now() - actualTimestamp.getTime()) / (1000 * 60))
-
-    console.log(`[v0] Article "${article.title?.substring(0, 50)}..." is ${minutesOld} minutes old`)
-
-    const sourceQuality = getSourceQuality(article.source || "Unknown")
-
-    const classification = classifyArticleForMarkets({
-      title: article.title || "",
-      summary: article.description || "",
-      keywords: keywords,
-    })
-
-    console.log(
-      `[v0] Market classification for "${article.title?.substring(0, 30)}...": score=${classification.score}, topics=${classification.topics.join(", ")}`,
+  for (let i = 0; i < articles.length; i += CHUNK_SIZE) {
+    const chunk = articles.slice(i, i + CHUNK_SIZE)
+    const chunkClassifications = await Promise.all(
+      chunk.map(async (article: TheNewsAPIArticle) => {
+        try {
+          return await classifyArticle({
+            title: article.title || "",
+            description: article.description || "",
+            content: article.description || "", // Use description as content snippet
+            url: article.url, // Pass URL for cache key
+          })
+        } catch (error) {
+          console.error(`[v0] Classification failed for article "${article.title?.substring(0, 30)}...":`, error)
+          // Return a default rejection if classification fails
+          return {
+            isRelevant: false,
+            topics: [],
+            score: 0,
+            reasons: ["Classification failed"],
+            tradingSignal: "Hold/Watch" as const,
+          }
+        }
+      }),
     )
-
-    return {
-      id: article.uuid || `thenewsapi-${Date.now()}-${index}`,
-      title: article.title || "Untitled",
-      summary: article.description || "No description available",
-      category: detectedCategory,
-      sentiment: analysis.sentiment,
-      relevanceScore: classification.score, // Use classification score instead of sentiment-based score
-      tradingSignal: analysis.tradingSignal,
-      source: article.source || "TheNewsAPI Source",
-      timestamp: actualTimestamp.toISOString(),
-      url: article.url || "#",
-      sourceQuality: sourceQuality.score,
-      sourceTier: sourceQuality.tier,
-      keywords: keywords.filter((k: string) => k && k.length > 3),
-      classification, // Attach full classification to article
+    classificationResults.push(...chunkClassifications)
+    
+    // Small delay between chunks to be respectful of rate limits
+    if (i + CHUNK_SIZE < articles.length) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
     }
-  })
+  }
 
-  const dedupedArticles = deduplicateArticles(newsItems)
-  console.log("[v0] TheNewsAPI: Deduplication removed", newsItems.length - dedupedArticles.length, "duplicates")
-
-  const relevantArticles = dedupedArticles.filter((article: NewsItemWithClassification) => {
-    if (!article.classification) return true
-    return article.classification.isRelevant
-  })
-
+  const relevantCount = classificationResults.filter((r) => r.isRelevant).length
+  const filteredCount = articles.length - relevantCount
   console.log(
-    "[v0] Market relevance filter removed",
-    dedupedArticles.length - relevantArticles.length,
-    "irrelevant articles",
+    `[v0] LLM classification complete. Relevant: ${relevantCount}/${articles.length} (filtered out ${filteredCount} local/noise articles)`,
   )
 
-  const limitedArticles = limitSportsArticles(relevantArticles)
+  // Additional filter to exclude Indian news (double-check in case some slipped through)
+  const isIndianArticle = (article: TheNewsAPIArticle): boolean => {
+    const indianDomains = [".in", "indiatoday", "timesofindia", "hindustantimes", "thehindu", "ndtv"]
+    const text = `${article.url || ""} ${article.source || ""} ${article.title || ""}`.toLowerCase()
+    return indianDomains.some((domain) => text.includes(domain))
+  }
+
+  // Build news items with classifications
+  const newsItems: NewsItemWithClassification[] = articles
+    .map((article: TheNewsAPIArticle, index: number) => {
+      const classification = classificationResults[index]
+      
+      // Skip non-relevant articles (completely discard them)
+      if (!classification.isRelevant) {
+        // Double-check: if isRelevant is false, score should be 0 (log if not for debugging)
+        if (classification.score > 0) {
+          console.warn(
+            `[v0] ⚠️ Article marked as irrelevant but has score > 0: "${article.title?.substring(0, 50)}..." (score: ${classification.score})`,
+          )
+        }
+        return null // This article will be filtered out and NOT returned to frontend
+      }
+
+      // Skip Indian articles
+      if (isIndianArticle(article)) {
+        return null
+      }
+
+      const analysis = analyzeNewsSentiment(article.title || "", article.description || "")
+
+      let keywords: string[] = []
+      if (Array.isArray(article.keywords)) {
+        keywords = article.keywords
+      } else if (typeof article.keywords === "string") {
+        keywords = (article.keywords as string).split(",").map((k) => k.trim())
+      }
+
+      const detectedCategory = mapTheNewsAPICategory(article.categories || [], category)
+      const actualTimestamp = article.published_at ? new Date(article.published_at) : new Date()
+
+      const sourceQuality = getSourceQuality(article.source || "Unknown")
+
+      console.log(
+        `[v0] ✓ Relevant article "${article.title?.substring(0, 40)}...": score=${classification.score}, signal=${classification.tradingSignal}`,
+      )
+
+      return {
+        id: article.uuid || `thenewsapi-${Date.now()}-${index}`,
+        title: article.title || "Untitled",
+        summary: article.description || "No description available",
+        category: detectedCategory,
+        sentiment: analysis.sentiment,
+        relevanceScore: classification.score,
+        tradingSignal: classification.tradingSignal,
+        source: article.source || "TheNewsAPI Source",
+        timestamp: actualTimestamp.toISOString(),
+        url: article.url || "#",
+        sourceQuality: sourceQuality.score,
+        sourceTier: sourceQuality.tier,
+        keywords: keywords.filter((k: string) => k && k.length > 3),
+        topics: classification.topics,
+        reasons: classification.reasons,
+        classification, // Attach full classification to article
+      }
+    })
+    .filter((item): item is NewsItemWithClassification => item !== null)
+
+  console.log(`[v0] Filtered to ${newsItems.length} relevant articles after LLM classification`)
+
+  const dedupedArticles = deduplicateArticles(newsItems)
+  console.log("[v0] Deduplication removed", newsItems.length - dedupedArticles.length, "duplicates")
+
+  const limitedArticles = limitSportsArticles(dedupedArticles)
   console.log("[v0] Final article count:", limitedArticles.length, "market-relevant articles")
 
   return limitedArticles

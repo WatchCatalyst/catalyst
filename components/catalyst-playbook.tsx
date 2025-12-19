@@ -10,137 +10,8 @@ import { BookOpen, AlertCircle } from "lucide-react"
 import type { NewsItem } from "@/app/page"
 import { calculateMarketImpact } from "@/lib/market-impact"
 import type { MarketTopic } from "@/lib/market-relevance-classifier"
-
-const PLAYBOOK_CONTENT = {
-  RATES_CENTRAL_BANKS: {
-    what: "This is a macro event related to interest rates and central bank policy. It can shift expectations for liquidity and risk appetite across the whole market, not just one ticker.",
-    reactions: [
-      "Initial reaction in the first 5-15 minutes can be violent and sometimes reverses.",
-      "Many traders wait for the first 30-minute range to break before committing to a direction.",
-      "Check index futures, yields, and USD to confirm whether the move is broad risk-on or risk-off.",
-    ],
-  },
-  INFLATION_MACRO: {
-    what: "This is a macro economic data release like CPI, GDP, or jobs numbers. These reports can shift central bank policy expectations and affect all risk assets.",
-    reactions: [
-      "Pre-market positioning often leads to sharp reversals after the data drops.",
-      "Watch bond yields and dollar strength for confirmation of the macro narrative.",
-      "First hour can be choppy; wait for institutional flows to settle around 10-11 AM ET.",
-    ],
-  },
-  REGULATION_POLICY: {
-    what: "This is a regulatory or policy headline. It can change how an entire sector or asset class is valued, especially if it impacts legality, compliance costs, or access to markets.",
-    reactions: [
-      "First headlines can be messy; details released later may confirm or soften the impact.",
-      "Major actions can reprice entire sectors or asset classes, not just one ticker.",
-      "Check if the regulation has immediate effect or requires further approval/implementation.",
-    ],
-  },
-  EARNINGS_FINANCIALS: {
-    what: "This is a company earnings report. Surprises in revenue, EPS, or guidance can reprice the stock quickly and affect related names in the sector.",
-    reactions: [
-      "Stocks often gap up or down on the open; watch whether price defends or fills that gap.",
-      "Guidance and commentary can matter more than the headline EPS number.",
-      "Volume staying elevated after the open can signal potential trend days.",
-    ],
-  },
-  MA_CORPORATE_ACTIONS: {
-    what: "This is news about mergers, acquisitions, buybacks, or other corporate actions. These can create immediate arbitrage opportunities or sector rotation.",
-    reactions: [
-      "Target companies often gap toward the offer price; acquirers may sell off on dilution concerns.",
-      "Watch for competing bids or regulatory pushback that can extend timelines.",
-      "Sector peers may move in sympathy if the deal signals broader consolidation.",
-    ],
-  },
-  TECH_PRODUCT: {
-    what: "This is a crypto/product update or launch. Adoption, performance, and user reaction can change how the token or company is valued.",
-    reactions: [
-      "'Buy the rumor, sell the news' behavior is common around launch dates.",
-      "Watch whether on-chain/user activity actually picks up after the announcement.",
-      "Technical issues or delays on launch day can trigger sharp selloffs.",
-    ],
-  },
-  SECURITY_INCIDENT: {
-    what: "This is a security or outage incident. It often hits confidence in the company or protocol and can trigger sharp repricing.",
-    reactions: [
-      "Initial selloff can be sharp; watch for follow-up news on scope, losses, or fixes.",
-      "Repeat incidents or poor communication can lead to longer-lasting damage.",
-      "Recovery announcements or insurance payouts can stabilize price action.",
-    ],
-  },
-  ETFS_FLOWS: {
-    what: "This is news about ETF launches, approvals, or major fund flows. Institutional money moving in or out can create sustained trends.",
-    reactions: [
-      "ETF approval rumors often cause volatility; actual approval can be a 'sell the news' event.",
-      "Large inflows/outflows can show institutional sentiment shifts.",
-      "Watch for arbitrage opportunities between ETF price and underlying assets.",
-    ],
-  },
-  LEGAL_ENFORCEMENT: {
-    what: "This is a lawsuit, investigation, or enforcement action. It can create uncertainty and pressure stock prices until resolved.",
-    reactions: [
-      "Settlement announcements can remove overhang and spark relief rallies.",
-      "Ongoing litigation can cap upside as investors wait for clarity.",
-      "Large fines or penalties can trigger selloffs if they materially impact financials.",
-    ],
-  },
-  GEOPOLITICS_CRISIS: {
-    what: "This is a geopolitical or crisis event. It tends to affect risk sentiment, commodities, and safe-haven assets.",
-    reactions: [
-      "Can drive flows into or out of safe-haven assets (USD, bonds, gold, sometimes BTC).",
-      "Sector impact can depend on commodities, supply chains, or sanctions involved.",
-      "Initial panic often fades as markets assess actual business impact vs. headline risk.",
-    ],
-  },
-  crypto: {
-    what: "This is crypto market news. It covers price action, protocol updates, regulatory developments, and adoption trends in digital assets.",
-    reactions: [
-      "Crypto markets trade 24/7 and can move violently on low volume during off-hours.",
-      "Regulatory news from major economies can trigger sector-wide repricing.",
-      "Watch Bitcoin dominance and correlation to risk assets for broader market sentiment.",
-    ],
-  },
-  stocks: {
-    what: "This is stock market news covering equities, earnings, sector rotation, and corporate developments.",
-    reactions: [
-      "Look for whether the first move holds or fades through the first hour of trading.",
-      "Check related tickers or sector ETFs for confirmation of the narrative.",
-      "Volume profile matters: strong volume confirms conviction, low volume suggests uncertainty.",
-    ],
-  },
-  technology: {
-    what: "This is technology sector news covering innovation, product launches, AI developments, and tech company performance.",
-    reactions: [
-      "Tech stocks often lead market moves but can be volatile on sentiment shifts.",
-      "Product launch success is measured by adoption metrics, not just announcements.",
-      "Watch for ripple effects across suppliers, competitors, and adjacent sectors.",
-    ],
-  },
-  war: {
-    what: "This is news related to military conflicts, geopolitical tensions, and their economic impacts.",
-    reactions: [
-      "Defense stocks and energy commodities often rise on escalation news.",
-      "Risk-off flows can hit growth stocks while boosting safe-haven assets.",
-      "Initial market reactions can be overdone; watch for fading moves as situation stabilizes.",
-    ],
-  },
-  politics: {
-    what: "This is political news covering elections, policy changes, government actions, and regulatory developments.",
-    reactions: [
-      "Markets often price in election outcomes months in advance; actual results can disappoint.",
-      "Policy announcements can create sector rotation opportunities (e.g., clean energy on climate bills).",
-      "Political gridlock can sometimes be bullish as it prevents disruptive changes.",
-    ],
-  },
-  DEFAULT: {
-    what: "This headline is tagged as a potential market catalyst based on your filters. The event type or category determines its likely market impact.",
-    reactions: [
-      "Look for whether the first move holds or fades.",
-      "Check related tickers or sector ETFs for confirmation.",
-      "Volume and price action after the initial reaction reveal conviction.",
-    ],
-  },
-}
+import { PLAYBOOK_CONTENT } from "@/lib/playbook-data"
+import { mapEventToTopic } from "@/lib/calendar-service"
 
 type CatalystPlaybookProps = {
   item: NewsItem | CalendarEvent
@@ -169,21 +40,23 @@ export function CatalystPlaybook({ item, type, trigger }: CatalystPlaybookProps)
       const news = item as NewsItem
       const classification = (news as any).classification
 
-      // Try to use the first detected market topic for more specific guidance
+      // Use the first detected market topic for specific guidance
       if (classification && classification.topics && classification.topics.length > 0) {
         const primaryTopic = classification.topics[0] as MarketTopic
-        return (
-          PLAYBOOK_CONTENT[primaryTopic] ||
-          PLAYBOOK_CONTENT[news.category as keyof typeof PLAYBOOK_CONTENT] ||
-          PLAYBOOK_CONTENT.DEFAULT
-        )
+        return PLAYBOOK_CONTENT[primaryTopic] || PLAYBOOK_CONTENT.DEFAULT
       }
 
-      return PLAYBOOK_CONTENT[news.category as keyof typeof PLAYBOOK_CONTENT] || PLAYBOOK_CONTENT.DEFAULT
+      // Fallback to default if no topics
+      return PLAYBOOK_CONTENT.DEFAULT
     } else {
       const event = item as CalendarEvent
-      // Calendar events are primarily macro/rates related
-      return PLAYBOOK_CONTENT.RATES_CENTRAL_BANKS
+      // Use the event's topic if available, otherwise try to infer from title
+      if (event.topic && event.topic in PLAYBOOK_CONTENT) {
+        return PLAYBOOK_CONTENT[event.topic as MarketTopic]
+      }
+      // Fallback: infer topic from title
+      const inferredTopic = mapEventToTopic(event.title)
+      return PLAYBOOK_CONTENT[inferredTopic] || PLAYBOOK_CONTENT.RATES_CENTRAL_BANKS
     }
   }
 
@@ -258,20 +131,20 @@ export function CatalystPlaybook({ item, type, trigger }: CatalystPlaybookProps)
           </DialogHeader>
 
           <div className="space-y-6 mt-4">
-            {/* Section 1: What this is */}
+            {/* Section 1: Definition */}
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-foreground">What this is</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{playbook.what}</p>
+              <h3 className="text-sm font-semibold text-foreground">Definition</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{playbook.definition}</p>
             </div>
 
-            {/* Section 2: How markets usually react */}
+            {/* Section 2: Trader Logic / Common Patterns */}
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-foreground">How markets usually react</h3>
+              <h3 className="text-sm font-semibold text-foreground">Trader Logic</h3>
               <ul className="space-y-2">
-                {playbook.reactions.map((reaction, idx) => (
+                {playbook.patterns.map((pattern, idx) => (
                   <li key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
                     <span className="text-accent-bright mt-0.5 flex-shrink-0">•</span>
-                    <span className="leading-relaxed">{reaction}</span>
+                    <span className="leading-relaxed">{pattern}</span>
                   </li>
                 ))}
               </ul>

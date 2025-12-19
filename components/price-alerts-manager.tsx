@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Bell, BellRing, Plus, X, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 
@@ -46,47 +45,20 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
   })
   const [isOpen, setIsOpen] = useState(false)
   const { toast } = useToast()
-  const supabase = createClient()
-  const [user, setUser] = useState<any>(null)
-
   useEffect(() => {
     loadAlerts()
   }, [])
 
-  const loadAlerts = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    setUser(user)
-
-    if (user) {
-      const { data, error } = await supabase
-        .from("price_alerts")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-
-      if (data && !error) {
-        setAlerts(data)
-      }
-    } else {
-      // Load from localStorage for non-authenticated users
-      const saved = localStorage.getItem("watchcatalyst-alerts")
-      if (saved) {
-        setAlerts(JSON.parse(saved))
-      }
+  const loadAlerts = () => {
+    const saved = localStorage.getItem("watchcatalyst-alerts")
+    if (saved) {
+      setAlerts(JSON.parse(saved))
     }
   }
 
-  const saveAlerts = async (updatedAlerts: PriceAlert[]) => {
+  const saveAlerts = (updatedAlerts: PriceAlert[]) => {
     localStorage.setItem("watchcatalyst-alerts", JSON.stringify(updatedAlerts))
-
-    if (user) {
-      // Sync to Supabase
-      toast({ title: "Alerts synced to cloud" })
-    } else {
-      toast({ title: "Alerts saved locally" })
-    }
+    toast({ title: "Alerts saved" })
   }
 
   const addAlert = async () => {
@@ -115,28 +87,9 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
       is_active: true,
     }
 
-    if (user) {
-      const { data, error } = await supabase
-        .from("price_alerts")
-        .insert({
-          user_id: user.id,
-          ...alertToAdd,
-        })
-        .select()
-
-      if (error) {
-        toast({ title: "Failed to create alert", variant: "destructive" })
-        return
-      }
-
-      if (data) {
-        setAlerts([data[0], ...alerts])
-      }
-    } else {
-      const updated = [alertToAdd, ...alerts]
-      setAlerts(updated)
-      await saveAlerts(updated)
-    }
+    const updated = [alertToAdd, ...alerts]
+    setAlerts(updated)
+    saveAlerts(updated)
 
     setNewAlert({
       symbol: "",
@@ -150,43 +103,24 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
     toast({ title: `Price alert set for ${alertToAdd.symbol}` })
   }
 
-  const toggleAlert = async (id: string) => {
+  const toggleAlert = (id: string) => {
     const alert = alerts.find((a) => a.id === id)
     if (!alert) return
 
     const newStatus = !alert.is_active
-
-    if (user) {
-      const { error } = await supabase.from("price_alerts").update({ is_active: newStatus }).eq("id", id)
-
-      if (error) {
-        toast({ title: "Failed to update alert", variant: "destructive" })
-        return
-      }
-    }
-
     const updated = alerts.map((a) => (a.id === id ? { ...a, is_active: newStatus } : a))
     setAlerts(updated)
-    await saveAlerts(updated)
+    saveAlerts(updated)
 
     toast({
       title: newStatus ? "Alert activated" : "Alert paused",
     })
   }
 
-  const removeAlert = async (id: string) => {
-    if (user) {
-      const { error } = await supabase.from("price_alerts").delete().eq("id", id)
-
-      if (error) {
-        toast({ title: "Failed to delete alert", variant: "destructive" })
-        return
-      }
-    }
-
+  const removeAlert = (id: string) => {
     const updated = alerts.filter((a) => a.id !== id)
     setAlerts(updated)
-    await saveAlerts(updated)
+    saveAlerts(updated)
 
     toast({ title: "Alert removed" })
   }

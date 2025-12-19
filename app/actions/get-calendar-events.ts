@@ -80,6 +80,8 @@ function formatDateLabel(eventDate: Date, todayDate: string, tomorrowDate: strin
   return eventDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
+// Note: This fallback is now rarely used since calendar component uses getMockUpcomingEvents()
+// Keeping for backward compatibility
 const FALLBACK_EVENTS = [
   {
     id: "fallback-1",
@@ -94,6 +96,7 @@ const FALLBACK_EVENTS = [
     marketHours: "regular-hours" as MarketHours,
     dateKey: "2024-11-26",
     isUS: true,
+    topic: "RATES_CENTRAL_BANKS",
   },
   {
     id: "fallback-2",
@@ -282,6 +285,9 @@ export async function getCalendarEvents() {
             .slice(0, 30) // Increase limit to ensure we get enough US events
 
           if (relevantEvents.length > 0) {
+            // Import once at the top
+            const { mapEventToTopic } = await import("@/lib/calendar-service")
+            
             const processedEvents = relevantEvents.map((event, index) => {
               const eventDate = new Date(event.date)
               const timeString = eventDate.toLocaleTimeString("en-US", {
@@ -293,7 +299,7 @@ export async function getCalendarEvents() {
               const displayDate = formatDateLabel(eventDate, todayDate, tomorrowDate)
               const marketHours = getMarketHours(eventDate)
               const dateKey = eventDate.toISOString().split("T")[0]
-
+              
               return {
                 id: `fmp-${index}`,
                 title: event.event,
@@ -307,6 +313,7 @@ export async function getCalendarEvents() {
                 currency: event.currency || event.country,
                 marketHours,
                 isUS: event.country === "US" || event.currency === "USD",
+                topic: mapEventToTopic(event.event),
               }
             })
 
@@ -334,10 +341,10 @@ export async function getCalendarEvents() {
       console.log("[v0] No FMP API key found, skipping...")
     }
 
-    console.warn("[v0] ⚠️ FMP calendar API failed - using fallback data")
-    console.warn("[v0] This shows old Nov 26 dates until FMP API access is confirmed")
-    console.warn("[v0] Your FMP Starter plan should provide access - may take a few minutes to activate")
-    return FALLBACK_EVENTS
+    console.warn("[v0] ⚠️ FMP calendar API failed - calendar component will use mock events")
+    // Don't return fallback events - let the component use mock events instead
+    // This ensures dates are always current
+    return []
   } catch (error) {
     console.error("[v0] Calendar fetch completely failed:", error)
     return FALLBACK_EVENTS

@@ -1,3 +1,7 @@
+import { generateObject } from "ai"
+import { z } from "zod"
+import { classificationCache } from "./classification-cache"
+
 export type MarketTopic =
   | "RATES_CENTRAL_BANKS"
   | "INFLATION_MACRO"
@@ -15,6 +19,14 @@ export type MarketClassification = {
   topics: MarketTopic[]
   score: number // 0-100
   reasons: string[]
+}
+
+export interface ClassificationResult {
+  isRelevant: boolean
+  topics: MarketTopic[] // Array of category IDs (MarketTopic values)
+  score: number // 0-100
+  reasons: string[] // Short bullet points on WHY it matters
+  tradingSignal: "Buy" | "Sell" | "Hold/Watch"
 }
 
 const TOPIC_KEYWORDS: Record<MarketTopic, string[]> = {
@@ -497,4 +509,145 @@ export function getTopicColor(topic: MarketTopic): { bg: string; text: string; b
     },
   }
   return colors[topic]
+}
+
+// LLM-based classification schema
+const ClassificationSchema = z.object({
+  isRelevant: z.boolean().describe("TRUE only if it fits one of the 10 categories AND moves markets"),
+  topics: z
+    .array(
+      z.enum([
+        "RATES_CENTRAL_BANKS",
+        "INFLATION_MACRO",
+        "REGULATION_POLICY",
+        "EARNINGS_FINANCIALS",
+        "MA_CORPORATE_ACTIONS",
+        "TECH_PRODUCT",
+        "SECURITY_INCIDENT",
+        "ETFS_FLOWS",
+        "LEGAL_ENFORCEMENT",
+        "GEOPOLITICS_CRISIS",
+      ])
+    )
+    .describe("Array of category IDs this article matches"),
+  score: z
+    .number()
+    .min(0)
+    .max(100)
+    .describe("0=irrelevant/fluff, 100=highly market-moving"),
+  reasons: z.array(z.string()).describe("Short bullet points explaining WHY this matters for trading"),
+  tradingSignal: z.enum(["Buy", "Sell", "Hold/Watch"]).describe("Simple sentiment inference for trading"),
+})
+
+const CATEGORY_DESCRIPTIONS = `
+1. Interest Rates & Central Banks (RATES_CENTRAL_BANKS): Fed, ECB, rate decisions, monetary policy, FOMC
+2. Inflation & Macro Data (INFLATION_MACRO): CPI, GDP, jobs reports, PMI, economic indicators
+3. Regulation & Government Policy (REGULATION_POLICY): SEC actions, bans, tax policy, new laws affecting markets
+4. Earnings & Financials (EARNINGS_FINANCIALS): Quarterly reports, guidance, revenue, profit announcements
+5. M&A & Corporate Actions (MA_CORPORATE_ACTIONS): Mergers, acquisitions, stock splits, buybacks, token burns
+6. Technology & Product Launches (TECH_PRODUCT): AI initiatives, L2 mainnets, new chips, protocol upgrades
+7. Security Incidents & Failures (SECURITY_INCIDENT): Hacks, exploits, outages, smart contract bugs
+8. ETFs & Institutional Flows (ETFS_FLOWS): ETF approvals, fund flows, treasury buys, whale movements
+9. Legal & Litigation (LEGAL_ENFORCEMENT): Lawsuits, DOJ/SEC enforcement, settlements, investigations
+10. Geopolitics & Crisis (GEOPOLITICS_CRISIS): Wars, sanctions, supply shocks, pandemics, trade tensions
+`
+
+/**
+ * LLM-based market relevance classifier using GPT-4o-mini.
+ * Strictly filters articles to only tradeable information.
+ */
+export async function classifyArticle(input: {
+  title: string
+  description?: string
+  content?: string
+  url?: string // Optional URL for cache key
+}): Promise<ClassificationResult> {
+  // Check cache first
+  const cachedResult = classificationCache.get(input.url, input.title)
+  if (cachedResult) {
+    console.log(`⚡ Cache Hit for: "${input.title.substring(0, 50)}${input.title.length > 50 ? "..." : ""}"`)
+    return cachedResult
+  }
+
+  const prompt = `You are a RUTHLESS Senior Risk Manager at a global macro hedge fund. Your ONLY job is to filter for news that moves **global markets** (S&P 500, BTC, Oil, Gold, FX, major indices, large-cap stocks).
+
+${CATEGORY_DESCRIPTIONS}
+
+**STRICT EXCLUSION RULES (Return isRelevant: false, score: 0):**
+1. **Local/Regional News:** Specific store openings (e.g., "Lidl opens in Northstowe"), local crime/police events, minor regional lawsuits, local weather (unless it shuts down a major port/grid/refinery), city/town-specific development projects, local mall/retail news, neighborhood business news.
+2. **Single-Consumer Events:** Product reviews, individual user complaints, celebrity endorsements, influencer posts, single-user experiences.
+3. **Low Impact Corporate:** Routine hiring/firing below C-suite, minor branch updates, local office openings, regional expansion announcements that won't materially impact stock price.
+4. **Administrative/Legal Fluff:** Minor lawsuits, routine regulatory filings, local court decisions, small fines, non-material settlements.
+5. **Hyperlocal Business:** Individual store management issues, local supplier disputes, city-specific business news, regional chain updates.
+
+**INCLUSION RULES (Return isRelevant: true ONLY if):**
+- It impacts a **publicly traded company's stock price** (expect >1% move expected) - major earnings, significant M&A, major product launches, CEO changes, major regulatory actions
+- It affects a **major crypto protocol** or token (Bitcoin, Ethereum, major DeFi protocols, exchange listings)
+- It impacts **national/global economy** - Fed decisions, inflation data, GDP, major policy changes, wars, sanctions, supply chain disruptions affecting commodities
+- It moves **major indices or sectors** - S&P 500, NASDAQ, Dow, sector-wide movements
+
+**CRITICAL:**
+- If the article is local/regional fluff or low-impact corporate noise, you MUST set isRelevant=false and score=0
+- Do NOT try to force a category if it's noise - empty topics array is fine
+- Be RUTHLESS - better to filter out borderline cases than let noise through
+- Only include if it would genuinely move markets in a meaningful way (>1% for stocks, significant for crypto/commodities)
+
+**Article to classify:**
+Title: ${input.title}
+${input.description ? `Description: ${input.description}` : ""}
+${input.content ? `Content: ${input.content.substring(0, 500)}` : ""}
+
+Return the classification result. If it's local fluff or won't move global markets, return isRelevant=false, score=0, and empty topics array.`
+
+  try {
+    const { object } = await generateObject({
+      model: "openai/gpt-4o-mini",
+      schema: ClassificationSchema,
+      prompt,
+      temperature: 0.3, // Lower temperature for more consistent classification
+      maxTokens: 500,
+    })
+
+    // Ensure consistency: if isRelevant is false, score should be 0 and topics empty
+    const isRelevant = object.isRelevant
+    const score = isRelevant ? object.score : 0
+    const topics = isRelevant ? (object.topics as MarketTopic[]) : []
+    const reasons = isRelevant ? object.reasons : ["Filtered out as local/noise/low-impact news"]
+
+    const result: ClassificationResult = {
+      isRelevant,
+      topics,
+      score,
+      reasons,
+      tradingSignal: object.tradingSignal,
+    }
+
+    // Store in cache after successful AI processing
+    classificationCache.set(input.url, input.title, result)
+    console.log(`🤖 AI Processed: "${input.title.substring(0, 50)}${input.title.length > 50 ? "..." : ""}"`)
+
+    return result
+  } catch (error) {
+    console.error("[classifyArticle] LLM classification failed, using keyword fallback:", error)
+    
+    // Fallback to keyword-based classification if LLM fails
+    const fallback = classifyArticleForMarkets({
+      title: input.title,
+      summary: input.description || input.content || "",
+    })
+
+    const fallbackResult: ClassificationResult = {
+      isRelevant: fallback.isRelevant,
+      topics: fallback.topics,
+      score: fallback.score,
+      reasons: fallback.reasons,
+      tradingSignal: fallback.score >= 70 ? "Buy" : fallback.score <= 30 ? "Sell" : "Hold/Watch",
+    }
+
+    // Store fallback result in cache as well
+    classificationCache.set(input.url, input.title, fallbackResult)
+    console.log(`🤖 AI Processed (fallback): "${input.title.substring(0, 50)}${input.title.length > 50 ? "..." : ""}"`)
+
+    return fallbackResult
+  }
 }

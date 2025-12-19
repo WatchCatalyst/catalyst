@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { NewsCard } from "@/components/news-card"
 import { SearchBar } from "@/components/search-bar"
 import { TrendingTopics } from "@/components/trending-topics"
@@ -8,7 +8,7 @@ import { ArticleDetailModal } from "@/components/article-detail-modal"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { SmartAlertsPanel } from "@/components/smart-alerts-panel"
 import { MarketOverview } from "@/components/market-overview"
-import { RefreshCw, Bell, BellOff, LogOut, LogIn, LayoutGrid, List, Star } from "lucide-react"
+import { RefreshCw, Bell, BellOff, LayoutGrid, List, Star, Radio, Pause } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { newsClient } from "@/lib/news-client"
 import { useToast } from "@/hooks/use-toast"
@@ -18,24 +18,16 @@ import { Label } from "@/components/ui/label"
 import { detectTickers } from "@/lib/ticker-detection"
 import Image from "next/image"
 import { CatalystCalendar } from "@/components/catalyst-calendar"
+import { WatchlistSidebar } from "@/components/watchlist-sidebar"
+import { getTopicLabel, MarketTopic } from "@/lib/market-relevance-classifier"
 import { SystemHealth } from "@/components/system-health"
 import { NewsCardSkeleton } from "@/components/news-card-skeleton"
 import { PortfolioManager } from "@/components/portfolio-manager"
 import { PriceAlertsManager } from "@/components/price-alerts-manager"
 import { CongressTracker } from "@/components/congress-tracker"
 import { LatestTrades } from "@/components/latest-trades"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
 import { Badge } from "@/components/ui/badge"
+import { SmartNotifications } from "@/components/smart-notifications"
 
 export type NewsCategoryType = "all" | "crypto" | "stocks" | "war" | "technology" | "politics" | "animals" | "sports"
 
@@ -53,6 +45,8 @@ export type NewsItem = {
   sourceQuality?: number
   sourceTier?: "premium" | "reliable" | "standard" | "unverified"
   keywords?: string[]
+  topics?: string[] // Market topics from AI classification
+  reasons?: string[] // Reasons why article is relevant for trading
 }
 
 const getKey = (pageIndex: number, previousPageData: any, selectedCategory: NewsCategoryType) => {
@@ -60,83 +54,139 @@ const getKey = (pageIndex: number, previousPageData: any, selectedCategory: News
   return `/api/news?category=${selectedCategory}&page=${pageIndex + 1}`
 }
 
+// Component to display "Last updated: X ago"
+function LastUpdatedDisplay({ lastUpdateTime }: { lastUpdateTime: Date }) {
+  const [timeAgo, setTimeAgo] = useState("Just now")
+
+  useEffect(() => {
+    const updateTimeAgo = () => {
+      const now = new Date()
+      const diffMs = now.getTime() - lastUpdateTime.getTime()
+      const diffSeconds = Math.floor(diffMs / 1000)
+      const diffMinutes = Math.floor(diffSeconds / 60)
+
+      if (diffSeconds < 10) {
+        setTimeAgo("Just now")
+      } else if (diffSeconds < 60) {
+        setTimeAgo(`${diffSeconds}s ago`)
+      } else if (diffMinutes === 1) {
+        setTimeAgo("1m ago")
+      } else if (diffMinutes < 60) {
+        setTimeAgo(`${diffMinutes}m ago`)
+      } else {
+        const diffHours = Math.floor(diffMinutes / 60)
+        setTimeAgo(`${diffHours}h ago`)
+      }
+    }
+
+    updateTimeAgo()
+    const intervalId = setInterval(updateTimeAgo, 5000) // Update every 5 seconds
+    return () => clearInterval(intervalId)
+  }, [lastUpdateTime])
+
+  return <span>Updated {timeAgo}</span>
+}
+
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<NewsCategoryType>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [isLive, setIsLive] = useState(true) // Live auto-refresh toggle
   const [viewMode, setViewMode] = useState<"card" | "compact">("card")
   const [showWatchlistOnly, setShowWatchlistOnly] = useState(false)
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
   const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null)
   const [portfolio, setPortfolio] = useState<Array<{ symbol: string; type: string }>>([])
   const previousNewsIdsRef = useRef<Set<string>>(new Set())
+  const searchQueryRef = useRef<string>("")
   const { toast } = useToast()
-  const [user, setUser] = useState<any>(null)
-  const [isAuthLoading, setIsAuthLoading] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date())
+  const [isRefreshing, setIsRefreshing] = useState(false) // Track background refresh state
   const [newArticleCount, setNewArticleCount] = useState(0)
   const [minRelevanceScore, setMinRelevanceScore] = useState(60)
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([])
 
-  const supabase = createClient()
-
-  useEffect(() => {
-    const checkUser = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        setUser(user)
-
-        if (user) {
-          // Fetch bookmarks from Supabase
-          const { data: bookmarks } = await supabase.from("bookmarks").select("news_id")
-
-          if (bookmarks) {
-            setBookmarkedIds(new Set(bookmarks.map((b) => b.news_id)))
-          }
-
-          // Fetch portfolio from Supabase
-          const { data: portfolioItems } = await supabase.from("portfolio").select("symbol, type")
-
-          if (portfolioItems) {
-            setPortfolio(portfolioItems)
-          }
-
-          const { data: settingsData } = await supabase
-            .from("user_settings")
-            .select("preferences")
-            .eq("user_id", user.id)
-            .single()
-
-          if (settingsData?.preferences) {
-            setMinRelevanceScore(settingsData.preferences.minRelevanceScore || 60)
-          }
-        } else {
-          // Fallback to local storage if no user
-          const saved = localStorage.getItem("watchcatalyst-bookmarks")
-          if (saved) {
-            setBookmarkedIds(new Set(JSON.parse(saved)))
-          }
-
-          const savedPortfolio = localStorage.getItem("watchcatalyst-portfolio")
-          if (savedPortfolio) {
-            setPortfolio(JSON.parse(savedPortfolio))
-          }
-
-          const savedPrefs = localStorage.getItem("watchcatalyst-preferences")
-          if (savedPrefs) {
-            const parsed = JSON.parse(savedPrefs)
-            setMinRelevanceScore(parsed.minRelevanceScore || 60)
-          }
-        }
-      } catch (error) {
-        console.error("Error checking auth:", error)
-      } finally {
-        setIsAuthLoading(false)
+  const loadPreferences = () => {
+    const savedPrefs = localStorage.getItem("watchcatalyst-preferences")
+    if (savedPrefs) {
+      const parsed = JSON.parse(savedPrefs)
+      setMinRelevanceScore(parsed.minRelevanceScore || 60)
+      if (parsed.selectedTopics && Array.isArray(parsed.selectedTopics)) {
+        setSelectedTopics(parsed.selectedTopics)
       }
     }
+  }
 
-    checkUser()
+  const loadPortfolio = () => {
+    const savedPortfolio = localStorage.getItem("watchcatalyst-portfolio")
+    if (savedPortfolio) {
+      try {
+        setPortfolio(JSON.parse(savedPortfolio))
+      } catch (error) {
+        console.error("Failed to parse portfolio from localStorage:", error)
+      }
+    }
+  }
+
+  // Keep ref in sync with searchQuery state
+  useEffect(() => {
+    searchQueryRef.current = searchQuery
+  }, [searchQuery])
+
+  useEffect(() => {
+    // Load from local storage
+    const saved = localStorage.getItem("watchcatalyst-bookmarks")
+    if (saved) {
+      setBookmarkedIds(new Set(JSON.parse(saved)))
+    }
+
+    loadPortfolio()
+    loadPreferences()
+
+    // Listen for storage changes (when settings are saved from other tabs)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "watchcatalyst-preferences") {
+        loadPreferences()
+      } else if (e.key === "watchcatalyst-portfolio") {
+        loadPortfolio()
+      }
+    }
+    window.addEventListener("storage", handleStorageChange)
+
+    // Listen for custom events (for same-tab updates)
+    const handlePreferencesUpdate = () => {
+      loadPreferences()
+    }
+    const handlePortfolioUpdate = () => {
+      loadPortfolio()
+    }
+    const handleWatchlistSymbolClick = (e: Event) => {
+      const customEvent = e as CustomEvent<{ symbol: string }>
+      const symbol = customEvent.detail?.symbol
+      if (symbol) {
+        // If clicking the same symbol that's already in search, reset to show all
+        if (searchQueryRef.current.toUpperCase() === symbol.toUpperCase()) {
+          setSearchQuery("")
+          searchQueryRef.current = ""
+        } else {
+          // Set the search query to the clicked symbol
+          setSearchQuery(symbol)
+          searchQueryRef.current = symbol
+          // Scroll to top smoothly to show filtered results
+          window.scrollTo({ top: 0, behavior: "smooth" })
+        }
+      }
+    }
+    window.addEventListener("preferences-updated", handlePreferencesUpdate as EventListener)
+    window.addEventListener("portfolio-updated", handlePortfolioUpdate as EventListener)
+    window.addEventListener("watchlist-symbol-clicked", handleWatchlistSymbolClick as EventListener)
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange)
+      window.removeEventListener("preferences-updated", handlePreferencesUpdate as EventListener)
+      window.removeEventListener("portfolio-updated", handlePortfolioUpdate as EventListener)
+      window.removeEventListener("watchlist-symbol-clicked", handleWatchlistSymbolClick as EventListener)
+    }
   }, [])
 
   const fetchPage = (url: string) => {
@@ -168,7 +218,7 @@ export default function Home() {
   const isEmpty = data?.[0]?.length === 0
   const isReachingEnd = isEmpty || (data && data[data.length - 1]?.length < 25)
 
-  const handleBookmark = async (id: string) => {
+  const handleBookmark = (id: string) => {
     const newBookmarks = new Set(bookmarkedIds)
     const isAdding = !newBookmarks.has(id)
 
@@ -180,18 +230,7 @@ export default function Home() {
       toast({ title: "Removed from bookmarks" })
     }
     setBookmarkedIds(newBookmarks)
-
-    if (user) {
-      // Sync to Supabase
-      if (isAdding) {
-        await supabase.from("bookmarks").insert({ user_id: user.id, news_id: id })
-      } else {
-        await supabase.from("bookmarks").delete().match({ user_id: user.id, news_id: id })
-      }
-    } else {
-      // Sync to Local Storage
-      localStorage.setItem("watchcatalyst-bookmarks", JSON.stringify(Array.from(newBookmarks)))
-    }
+    localStorage.setItem("watchcatalyst-bookmarks", JSON.stringify(Array.from(newBookmarks)))
   }
 
   useEffect(() => {
@@ -253,14 +292,34 @@ export default function Home() {
     }
   }, [news, autoRefresh, toast])
 
-  const handleRefresh = async () => {
-    await refreshNews()
-    setLastUpdateTime(new Date())
-    setNewArticleCount(0)
-    toast({
-      title: "Refreshed",
-      description: "News feed updated successfully",
-    })
+  const handleRefresh = async (silent = false) => {
+    if (!silent) {
+      setIsRefreshing(true)
+    }
+    try {
+      await refreshNews()
+      setLastUpdateTime(new Date())
+      if (!silent) {
+        setNewArticleCount(0)
+        toast({
+          title: "Refreshed",
+          description: "News feed updated successfully",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to refresh news:", error)
+      if (!silent) {
+        toast({
+          title: "Refresh failed",
+          description: "Could not update news feed",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      if (!silent) {
+        setIsRefreshing(false)
+      }
+    }
   }
 
   const handleAutoRefreshToggle = (checked: boolean) => {
@@ -273,6 +332,39 @@ export default function Home() {
     })
   }
 
+  const handleLiveToggle = (checked: boolean) => {
+    setIsLive(checked)
+    if (checked) {
+      setLastUpdateTime(new Date()) // Reset timer when enabling
+      toast({
+        title: "🔴 Live Mode Enabled",
+        description: "Feed will refresh every 60 seconds",
+      })
+    } else {
+      toast({
+        title: "⏸ Live Mode Paused",
+        description: "Auto-refresh disabled",
+      })
+    }
+  }
+
+  // Auto-refresh polling: every 60 seconds when live
+  useEffect(() => {
+    if (!isLive) return
+
+    const intervalId = setInterval(() => {
+      // Refresh silently in background (no toast, no loading spinner)
+      // Update lastUpdateTime silently
+      refreshNews().then(() => {
+        setLastUpdateTime(new Date())
+      }).catch((error) => {
+        console.error("Background refresh failed:", error)
+      })
+    }, 60000) // 60 seconds
+
+    return () => clearInterval(intervalId)
+  }, [isLive, refreshNews])
+
   const isRelevantToPortfolio = (article: NewsItem): boolean => {
     if (portfolio.length === 0) return false
 
@@ -282,31 +374,53 @@ export default function Home() {
     return portfolio.some((asset) => text.includes(asset.symbol) || tickers.some((t) => t.symbol === asset.symbol))
   }
 
-  const filteredNews = news.filter((item: NewsItem) => {
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      const matchesSearch =
-        item.title.toLowerCase().includes(query) ||
-        item.summary.toLowerCase().includes(query) ||
-        item.keywords.some((keyword: string) => keyword.toLowerCase().includes(query)) ||
-        item.source.toLowerCase().includes(query)
+  const filteredNews = useMemo(
+    () =>
+      news.filter((item: NewsItem) => {
+        // Portfolio awareness: bypass relevance score if article matches portfolio holdings
+        const isHolding = isRelevantToPortfolio(item)
+        if (isHolding) {
+          // Portfolio matches always pass, regardless of relevance score
+          // Continue with other filters below
+        } else {
+          // Non-portfolio articles must meet relevance score threshold
+          if (item.relevanceScore < minRelevanceScore) {
+            return false
+          }
+        }
 
-      if (!matchesSearch) return false
-    }
+        // Search filter
+        if (searchQuery) {
+          const query = searchQuery.toLowerCase()
+          const matchesSearch =
+            item.title.toLowerCase().includes(query) ||
+            item.summary.toLowerCase().includes(query) ||
+            (item.keywords && item.keywords.some((keyword: string) => keyword.toLowerCase().includes(query))) ||
+            item.source.toLowerCase().includes(query)
 
-    // Watchlist filter
-    if (showWatchlistOnly) {
-      const hasMatchingTicker = portfolio.some((holding) => {
-        const tickerRegex = new RegExp(`\\$${holding.symbol}\\b`, "i")
-        return tickerRegex.test(item.title) || tickerRegex.test(item.summary)
-      })
+          if (!matchesSearch) return false
+        }
 
-      if (!hasMatchingTicker) return false
-    }
+        // Watchlist filter
+        if (showWatchlistOnly) {
+          if (!isHolding) {
+            return false
+          }
+        }
 
-    return true
-  })
+        // Topic filter (portfolio holdings bypass this)
+        if (selectedTopics.length > 0 && !isHolding) {
+          const articleTopics = (item as any).classification?.topics || item.topics || []
+          const hasMatchingTopic = articleTopics.some((topic: string) => selectedTopics.includes(topic))
+          if (!hasMatchingTopic) {
+            return false
+          }
+        }
+
+        return true
+      }),
+    [news, minRelevanceScore, searchQuery, showWatchlistOnly, portfolio, selectedTopics],
+  )
 
   const sortedNews = [...filteredNews].sort((a, b) => {
     const aRelevant = isRelevantToPortfolio(a)
@@ -325,14 +439,6 @@ export default function Home() {
     {} as Record<NewsCategoryType, number>,
   )
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-    setBookmarkedIds(new Set())
-    setPortfolio([])
-    toast({ title: "Signed out successfully" })
-    window.location.reload() // Reload to clear any state or cache
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -381,66 +487,35 @@ export default function Home() {
               <SettingsDialog />
               <SystemHealth />
 
-              {/* Auth section */}
-              {!isAuthLoading &&
-                (user ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="bg-accent-bright/10 text-accent-bright">
-                            {user.email?.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-muted-foreground">{user.email}</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Sign out
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : (
-                  <Button
-                    asChild
-                    variant="default"
-                    size="sm"
-                    className="bg-accent-bright text-black hover:bg-accent-bright/90 h-8 px-2 sm:px-3"
-                  >
-                    <Link href="/auth/login">
-                      <LogIn className="h-4 w-4 sm:mr-2" />
-                      <span className="hidden sm:inline">Login</span>
-                    </Link>
-                  </Button>
-                ))}
-
               {/* Live toggle */}
               <div className="flex items-center gap-1.5 sm:gap-2 border-l border-border pl-1.5 sm:pl-2">
-                {autoRefresh ? (
-                  <Bell className="h-4 w-4 text-accent-bright" />
+                {isLive ? (
+                  <Radio className="h-4 w-4 text-accent-bright fill-accent-bright" />
                 ) : (
-                  <BellOff className="h-4 w-4 text-muted-foreground" />
+                  <Pause className="h-4 w-4 text-muted-foreground" />
                 )}
-                <Switch id="auto-refresh" checked={autoRefresh} onCheckedChange={handleAutoRefreshToggle} />
-                <Label htmlFor="auto-refresh" className="text-sm cursor-pointer whitespace-nowrap hidden sm:inline">
-                  Live
+                <Switch id="live-toggle" checked={isLive} onCheckedChange={handleLiveToggle} />
+                <Label htmlFor="live-toggle" className="text-sm cursor-pointer whitespace-nowrap hidden sm:inline">
+                  {isLive ? "🔴 Live" : "⏸ Paused"}
                 </Label>
               </div>
 
+              {/* Last updated indicator */}
+              {isLive && (
+                <div className="hidden md:flex items-center text-xs text-muted-foreground">
+                  <LastUpdatedDisplay lastUpdateTime={lastUpdateTime} />
+                </div>
+              )}
+
               {/* Refresh button */}
               <Button
-                onClick={handleRefresh}
+                onClick={() => handleRefresh(false)}
                 variant="outline"
                 size="sm"
-                disabled={isValidating}
+                disabled={isValidating || isRefreshing}
                 className="gap-1.5 sm:gap-2 bg-transparent relative h-8 px-2 sm:px-3"
               >
-                <RefreshCw className={`h-4 w-4 ${isValidating ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-4 w-4 ${isValidating || isRefreshing ? "animate-spin" : ""}`} />
                 <span className="hidden sm:inline">Refresh</span>
                 {newArticleCount > 0 && (
                   <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-accent-bright text-black text-[10px] font-bold">
@@ -448,6 +523,9 @@ export default function Home() {
                   </Badge>
                 )}
               </Button>
+              {isRefreshing && !isValidating && (
+                <span className="hidden lg:inline text-xs text-muted-foreground">Updating...</span>
+              )}
             </div>
           </div>
 
@@ -460,6 +538,77 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main content area - news articles */}
           <div className="lg:col-span-3 space-y-4">
+            {/* Topic Filter Chips */}
+            <div className="flex flex-col gap-3 pb-4 border-b border-border">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Filter by topic:</span>
+                <Button
+                  variant={selectedTopics.length === 0 ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setSelectedTopics([])
+                    const prefs = localStorage.getItem("watchcatalyst-preferences")
+                    const parsed = prefs ? JSON.parse(prefs) : {}
+                    localStorage.setItem(
+                      "watchcatalyst-preferences",
+                      JSON.stringify({ ...parsed, selectedTopics: [] }),
+                    )
+                    window.dispatchEvent(new Event("preferences-updated"))
+                  }}
+                  className="h-7 text-xs"
+                >
+                  All
+                </Button>
+                {(
+                  [
+                    "RATES_CENTRAL_BANKS",
+                    "INFLATION_MACRO",
+                    "REGULATION_POLICY",
+                    "EARNINGS_FINANCIALS",
+                    "MA_CORPORATE_ACTIONS",
+                    "TECH_PRODUCT",
+                    "SECURITY_INCIDENT",
+                    "ETFS_FLOWS",
+                    "LEGAL_ENFORCEMENT",
+                    "GEOPOLITICS_CRISIS",
+                  ] as MarketTopic[]
+                ).map((topic) => {
+                  const isSelected = selectedTopics.includes(topic)
+                  return (
+                    <Button
+                      key={topic}
+                      variant={isSelected ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        const newTopics = isSelected
+                          ? selectedTopics.filter((t) => t !== topic)
+                          : [...selectedTopics, topic]
+                        setSelectedTopics(newTopics)
+                        const prefs = localStorage.getItem("watchcatalyst-preferences")
+                        const parsed = prefs ? JSON.parse(prefs) : {}
+                        localStorage.setItem(
+                          "watchcatalyst-preferences",
+                          JSON.stringify({ ...parsed, selectedTopics: newTopics }),
+                        )
+                        window.dispatchEvent(new Event("preferences-updated"))
+                      }}
+                      className={`h-7 text-xs ${
+                        isSelected ? "bg-accent-bright hover:bg-accent-bright/90" : ""
+                      }`}
+                    >
+                      {getTopicLabel(topic)}
+                    </Button>
+                  )
+                })}
+              </div>
+              {selectedTopics.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  Showing {selectedTopics.length} topic{selectedTopics.length !== 1 ? "s" : ""}. Portfolio holdings
+                  shown regardless of filter.
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-border">
               {/* Control bar */}
               <div className="flex items-center gap-4 px-6 py-3 border-b border-border">
@@ -508,22 +657,35 @@ export default function Home() {
               </div>
             ) : sortedNews.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">No news found matching your filters</p>
+                <p className="text-muted-foreground">
+                  {minRelevanceScore > 0
+                    ? `No high-impact news found (minimum relevance score: ${minRelevanceScore})`
+                    : "No news found matching your filters"}
+                </p>
+                {minRelevanceScore >= 80 && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Try lowering the minimum relevance score in Settings to see more articles.
+                  </p>
+                )}
               </div>
             ) : (
               <>
                 <div className={viewMode === "compact" ? "space-y-2" : "space-y-4"}>
-                  {sortedNews.map((item) => (
-                    <div key={item.id} className="relative">
-                      <NewsCard
-                        news={item}
-                        onBookmark={handleBookmark}
-                        isBookmarked={bookmarkedIds.has(item.id)}
-                        isRelevantToPortfolio={isRelevantToPortfolio(item)}
-                        compact={viewMode === "compact"}
-                      />
-                    </div>
-                  ))}
+                  {sortedNews.map((item) => {
+                    const isHolding = isRelevantToPortfolio(item)
+                    return (
+                      <div key={item.id} className="relative">
+                        <NewsCard
+                          news={item}
+                          onBookmark={handleBookmark}
+                          isBookmarked={bookmarkedIds.has(item.id)}
+                          isRelevantToPortfolio={isHolding}
+                          isHolding={isHolding}
+                          compact={viewMode === "compact"}
+                        />
+                      </div>
+                    )
+                  })}
                 </div>
 
                 <div className="pt-4 text-center">
@@ -550,6 +712,7 @@ export default function Home() {
           </div>
 
           <div className="lg:col-span-1 space-y-4">
+            <WatchlistSidebar />
             <div className="max-h-[400px] overflow-hidden">
               <CatalystCalendar />
             </div>
@@ -596,6 +759,9 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      {/* Smart Browser Notifications - watches news and sends system notifications */}
+      <SmartNotifications news={news} portfolio={portfolio} />
 
       <ArticleDetailModal
         news={selectedArticle}

@@ -12,13 +12,10 @@ import {
   Bookmark,
   BookmarkCheck,
   Star,
-  ChevronRight,
   Info,
 } from "lucide-react"
-import { AIAnalysisDialog } from "@/components/ai-analysis-dialog"
 import type { NewsItem } from "@/app/page"
 import { linkifyTickers } from "@/lib/ticker-detection"
-import { getCategoryColor } from "@/lib/category-colors"
 import { MarketImpactBadge } from "@/components/market-impact-badge"
 import { getTopicLabel, getTopicColor, type MarketTopic } from "@/lib/market-relevance-classifier"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -32,7 +29,14 @@ type NewsCardProps = {
   compact?: boolean
 }
 
-export function NewsCard({ news, onBookmark, isBookmarked, isRelevantToPortfolio, compact = false }: NewsCardProps) {
+export function NewsCard({
+  news,
+  onBookmark,
+  isBookmarked,
+  isRelevantToPortfolio,
+  isHolding = false,
+  compact = false,
+}: NewsCardProps) {
   const getSentimentIcon = () => {
     switch (news.sentiment) {
       case "bullish":
@@ -100,8 +104,6 @@ export function NewsCard({ news, onBookmark, isBookmarked, isRelevantToPortfolio
     )
   }
 
-  const categoryColor = getCategoryColor(news.category)
-
   const classification = (news as any).classification
 
   const renderTopicBadges = () => {
@@ -164,12 +166,14 @@ export function NewsCard({ news, onBookmark, isBookmarked, isRelevantToPortfolio
       <Card
         id={`news-${news.id}`}
         className={`hover:bg-accent/5 transition-colors duration-200 bg-card/80 backdrop-blur-sm group border-l-4 ${
-          news.sentiment === "bullish"
-            ? "border-l-success"
-            : news.sentiment === "bearish"
-              ? "border-l-danger"
-              : "border-l-border"
-        }`}
+          isHolding
+            ? "border-l-yellow-500"
+            : news.sentiment === "bullish"
+              ? "border-l-success"
+              : news.sentiment === "bearish"
+                ? "border-l-danger"
+                : "border-l-border"
+        } ${isHolding ? "ring-1 ring-yellow-500/20" : ""}`}
       >
         <CardContent className="p-3 flex items-center gap-4">
           <div className="flex items-center gap-2 min-w-[100px]">
@@ -184,7 +188,16 @@ export function NewsCard({ news, onBookmark, isBookmarked, isRelevantToPortfolio
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-sm font-medium text-foreground truncate">{linkifyTickers(news.title)}</h3>
-              {isRelevantToPortfolio && (
+              {isHolding && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-600 border-yellow-500/30 whitespace-nowrap"
+                  title="This article mentions one of your holdings"
+                >
+                  💼 Holding
+                </Badge>
+              )}
+              {isRelevantToPortfolio && !isHolding && (
                 <Star className="h-3 w-3 text-accent-bright fill-accent-bright flex-shrink-0" />
               )}
               {news.tradingSignal && (
@@ -199,9 +212,6 @@ export function NewsCard({ news, onBookmark, isBookmarked, isRelevantToPortfolio
                 <Clock className="h-3 w-3" />
                 {formatTimestamp(news.timestamp)}
               </span>
-              <Badge className={`${categoryColor.bg} ${categoryColor.text} ${categoryColor.border} border text-[10px]`}>
-                {news.category}
-              </Badge>
               <MarketImpactBadge news={news} showLabel={false} size="sm" />
               {renderRelevanceTooltip()}
             </div>
@@ -228,14 +238,6 @@ export function NewsCard({ news, onBookmark, isBookmarked, isRelevantToPortfolio
                 )}
               </Button>
             )}
-            <AIAnalysisDialog
-              news={news}
-              trigger={
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              }
-            />
           </div>
         </CardContent>
       </Card>
@@ -245,14 +247,24 @@ export function NewsCard({ news, onBookmark, isBookmarked, isRelevantToPortfolio
   return (
     <Card
       id={`news-${news.id}`}
-      className={`hover:border-accent-bright/50 transition-all duration-200 bg-card/80 backdrop-blur-sm relative ${isRelevantToPortfolio ? "ring-2 ring-accent-bright/30" : ""}`}
+      className={`hover:border-accent-bright/50 transition-all duration-200 bg-card/80 backdrop-blur-sm relative ${
+        isHolding ? "ring-2 ring-yellow-500/30 border-yellow-500/20" : isRelevantToPortfolio ? "ring-2 ring-accent-bright/30" : ""
+      }`}
     >
       <CardContent className="p-5">
         <div className="flex flex-col md:flex-row md:items-start gap-4">
           <div className="flex-1 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1">
-                {isRelevantToPortfolio && (
+                {isHolding && (
+                  <Badge
+                    variant="outline"
+                    className="mb-2 bg-yellow-500/10 text-yellow-600 border-yellow-500/30"
+                  >
+                    💼 Holding
+                  </Badge>
+                )}
+                {isRelevantToPortfolio && !isHolding && (
                   <Badge
                     variant="outline"
                     className="mb-2 bg-accent-bright/10 text-accent-bright border-accent-bright/30"
@@ -296,12 +308,6 @@ export function NewsCard({ news, onBookmark, isBookmarked, isRelevantToPortfolio
                 <Clock className="h-3 w-3" />
                 {formatTimestamp(news.timestamp)}
               </span>
-              <span>•</span>
-              <Badge
-                className={`${categoryColor.bg} ${categoryColor.text} ${categoryColor.border} border text-xs capitalize`}
-              >
-                {news.category}
-              </Badge>
               <MarketImpactBadge news={news} size="sm" />
               {renderRelevanceTooltip()}
             </div>
@@ -316,8 +322,6 @@ export function NewsCard({ news, onBookmark, isBookmarked, isRelevantToPortfolio
                 <div className="text-sm font-semibold text-accent-bright">{news.tradingSignal}</div>
               </div>
             )}
-
-            <AIAnalysisDialog news={news} />
 
             <div className="flex gap-2">
               <a
