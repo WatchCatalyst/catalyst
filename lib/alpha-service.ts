@@ -57,7 +57,8 @@ function mapTransactionType(type: string): "Buy" | "Sell" {
  * Fetch politician trades (Senate) from FMP API
  */
 export async function getPoliticianTrades(): Promise<AlphaTrade[]> {
-  const apiKey = process.env.NEXT_PUBLIC_FMP_API_KEY
+  // TEMPORARY: Hardcoded for debugging - replace with process.env.NEXT_PUBLIC_FMP_API_KEY after testing
+  const apiKey = "bKsbxmGBlmGXJw9qyVGuTzZgVpix66ok"
 
   if (!apiKey) {
     console.warn("[alpha-service] FMP API key not configured. Politician trades will not be available.")
@@ -75,6 +76,10 @@ export async function getPoliticianTrades(): Promise<AlphaTrade[]> {
     )
 
     if (!response.ok) {
+      if (response.status === 403) {
+        console.warn("[alpha-service] FMP Free Tier limit hit - upgrades required for this data")
+        return []
+      }
       console.error(`[alpha-service] FMP API error for Senate trades: ${response.status}`)
       return []
     }
@@ -104,7 +109,8 @@ export async function getPoliticianTrades(): Promise<AlphaTrade[]> {
  * Fetch insider trades (Corporate Insiders) from FMP API
  */
 export async function getInsiderTrades(): Promise<AlphaTrade[]> {
-  const apiKey = process.env.NEXT_PUBLIC_FMP_API_KEY
+  // TEMPORARY: Hardcoded for debugging - replace with process.env.NEXT_PUBLIC_FMP_API_KEY after testing
+  const apiKey = "bKsbxmGBlmGXJw9qyVGuTzZgVpix66ok"
 
   if (!apiKey) {
     console.warn("[alpha-service] FMP API key not configured. Insider trades will not be available.")
@@ -122,6 +128,10 @@ export async function getInsiderTrades(): Promise<AlphaTrade[]> {
     )
 
     if (!response.ok) {
+      if (response.status === 403) {
+        console.warn("[alpha-service] FMP Free Tier limit hit - upgrades required for this data")
+        return []
+      }
       console.error(`[alpha-service] FMP API error for Insider trades: ${response.status}`)
       return []
     }

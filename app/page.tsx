@@ -28,6 +28,7 @@ import { CongressTracker } from "@/components/congress-tracker"
 import { LatestTrades } from "@/components/latest-trades"
 import { Badge } from "@/components/ui/badge"
 import { SmartNotifications } from "@/components/smart-notifications"
+import { ContextChart } from "@/components/context-chart"
 
 export type NewsCategoryType = "all" | "crypto" | "stocks" | "war" | "technology" | "politics" | "animals" | "sports"
 
@@ -538,6 +539,11 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main content area - news articles */}
           <div className="lg:col-span-3 space-y-4">
+            {/* Context Chart - Only show when filtering by symbol */}
+            {searchQuery && (
+              <ContextChart symbol={searchQuery} articles={filteredNews} />
+            )}
+
             {/* Topic Filter Chips */}
             <div className="flex flex-col gap-3 pb-4 border-b border-border">
               <div className="flex items-center gap-2 flex-wrap">
