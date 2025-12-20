@@ -194,3 +194,20 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /* The Core Glass Material */
+  .glass {
+    @apply bg-zinc-950/70 backdrop-blur-xl border-r border-white/5;
+  }
+  
+  /* A Lighter Glass for Cards/Widgets */
+  .glass-card {
+    @apply bg-zinc-900/40 backdrop-blur-md border border-white/5 rounded-xl transition-all duration-300 hover:bg-zinc-800/50 hover:border-white/10 shadow-sm;
+  }
+
+  /* A subtle gradient glow for high-value items */
+  .glow-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-400;
+  }
+}

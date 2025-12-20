@@ -216,12 +216,16 @@ async function fetchFromTheNewsAPI(
 
   console.log(`[v0] Processing ${articles.length} articles with LLM classification...`)
 
-  // Process classifications in parallel chunks (8 at a time to avoid rate limits)
-  const CHUNK_SIZE = 8
+  // Process classifications in parallel chunks (10 at a time for better throughput)
+  const CHUNK_SIZE = 10
   const classificationResults: ClassificationResult[] = []
+  const totalChunks = Math.ceil(articles.length / CHUNK_SIZE)
 
   for (let i = 0; i < articles.length; i += CHUNK_SIZE) {
     const chunk = articles.slice(i, i + CHUNK_SIZE)
+    const chunkIndex = Math.floor(i / CHUNK_SIZE) + 1
+    console.log(`[v0] Processing chunk ${chunkIndex}/${totalChunks} (${chunk.length} articles)...`)
+    
     const chunkClassifications = await Promise.all(
       chunk.map(async (article: TheNewsAPIArticle) => {
         try {
@@ -246,9 +250,9 @@ async function fetchFromTheNewsAPI(
     )
     classificationResults.push(...chunkClassifications)
     
-    // Small delay between chunks to be respectful of rate limits
+    // Reduced delay between chunks (50ms instead of 100ms for faster processing)
     if (i + CHUNK_SIZE < articles.length) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 50))
     }
   }
 

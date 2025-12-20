@@ -31,23 +31,23 @@ export async function fetchTheNewsAPIArticles(
   const theNewsAPICategory = categoryMap[category] || "business,tech"
 
   let publishedAfter = ""
-  let limit = 50
+  let limit = 30 // Reduced from 50 to 30 for faster initial load
 
   if (timeRange === "today") {
     const estNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }))
     const todayStart = new Date(estNow)
     todayStart.setHours(0, 0, 0, 0)
     publishedAfter = todayStart.toISOString()
-    limit = 50
-    console.log("[v0] Today time range: fetching 50 articles from", todayStart.toISOString(), "to now (EST)")
+    limit = 30
+    console.log("[v0] Today time range: fetching 30 articles from", todayStart.toISOString(), "to now (EST)")
   } else if (timeRange === "1h") {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
     publishedAfter = oneHourAgo.toISOString()
-    limit = 50
+    limit = 30
   } else if (timeRange === "4h") {
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000)
     publishedAfter = fourHoursAgo.toISOString()
-    limit = 50
+    limit = 30
   }
 
   console.log(
