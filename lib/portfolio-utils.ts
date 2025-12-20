@@ -72,3 +72,4 @@ export function isPortfolioMatch(article: NewsItem, portfolio: PortfolioAsset[])
   return false
 }
 
+
