@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent } from "@/components/ui/card"
-import { TrendingUp, TrendingDown, Minus, Activity, Bitcoin, BarChart3 } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, Activity } from "lucide-react"
 import type { NewsItem } from "@/app/page"
 
 type MarketOverviewProps = {
@@ -59,36 +59,34 @@ export function MarketOverview({ news }: MarketOverviewProps) {
         </CardContent>
       </Card>
 
-      {/* Top Sector Card */}
+      {/* Bullish Sentiment Card */}
       <Card className="bg-card/50 backdrop-blur-sm border-border">
         <CardContent className="p-2 md:p-4 h-full flex flex-col justify-between min-h-[80px] md:min-h-[100px]">
           <div className="flex items-center gap-1 md:gap-2 text-muted-foreground">
-            <BarChart3 className="h-3 w-3 md:h-4 md:w-4 shrink-0" />
-            <span className="text-[10px] md:text-xs font-medium uppercase tracking-wide truncate">Sector</span>
+            <TrendingUp className="h-3 w-3 md:h-4 md:w-4 shrink-0" />
+            <span className="text-[10px] md:text-xs font-medium uppercase tracking-wide truncate">Bullish</span>
           </div>
           <div className="mt-2 md:mt-3">
-            <span className="text-sm md:text-xl lg:text-2xl font-bold text-foreground truncate block">Tech</span>
+            <span className="text-sm md:text-xl lg:text-2xl font-bold text-success truncate block">{bullishPct}%</span>
           </div>
-          <div className="flex items-center gap-1 mt-2 md:mt-3 text-success">
-            <TrendingUp className="h-3 w-3 md:h-3.5 md:w-3.5 shrink-0" />
-            <span className="text-[10px] md:text-xs font-medium truncate">Active</span>
+          <div className="flex items-center gap-1 mt-2 md:mt-3 text-muted-foreground">
+            <span className="text-[10px] md:text-xs font-medium truncate">{sentimentCounts.bullish} articles</span>
           </div>
         </CardContent>
       </Card>
 
-      {/* Crypto Sentiment Card */}
+      {/* Bearish Sentiment Card */}
       <Card className="bg-card/50 backdrop-blur-sm border-border">
         <CardContent className="p-2 md:p-4 h-full flex flex-col justify-between min-h-[80px] md:min-h-[100px]">
           <div className="flex items-center gap-1 md:gap-2 text-muted-foreground">
-            <Bitcoin className="h-3 w-3 md:h-4 md:w-4 shrink-0" />
-            <span className="text-[10px] md:text-xs font-medium uppercase tracking-wide truncate">Crypto</span>
+            <TrendingDown className="h-3 w-3 md:h-4 md:w-4 shrink-0" />
+            <span className="text-[10px] md:text-xs font-medium uppercase tracking-wide truncate">Bearish</span>
           </div>
           <div className="mt-2 md:mt-3">
-            <span className="text-sm md:text-xl lg:text-2xl font-bold text-foreground truncate block">Mixed</span>
+            <span className="text-sm md:text-xl lg:text-2xl font-bold text-danger truncate block">{bearishPct}%</span>
           </div>
-          <div className="flex items-center gap-1 mt-2 md:mt-3 text-amber-500">
-            <Minus className="h-3 w-3 md:h-3.5 md:w-3.5 shrink-0" />
-            <span className="text-[10px] md:text-xs font-medium truncate">Volatile</span>
+          <div className="flex items-center gap-1 mt-2 md:mt-3 text-muted-foreground">
+            <span className="text-[10px] md:text-xs font-medium truncate">{sentimentCounts.bearish} articles</span>
           </div>
         </CardContent>
       </Card>
