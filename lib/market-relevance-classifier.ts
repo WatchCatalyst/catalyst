@@ -1,6 +1,5 @@
 import { generateObject } from "ai"
 import { z } from "zod"
-import { classificationCache } from "./classification-cache"
 
 export type MarketTopic =
   | "RATES_CENTRAL_BANKS"
@@ -560,15 +559,8 @@ export async function classifyArticle(input: {
   title: string
   description?: string
   content?: string
-  url?: string // Optional URL for cache key
+  url?: string
 }): Promise<ClassificationResult> {
-  // Check cache first
-  const cachedResult = classificationCache.get(input.url, input.title)
-  if (cachedResult) {
-    console.log(`⚡ Cache Hit for: "${input.title.substring(0, 50)}${input.title.length > 50 ? "..." : ""}"`)
-    return cachedResult
-  }
-
   const prompt = `You are a RUTHLESS Senior Risk Manager at a global macro hedge fund. Your ONLY job is to filter for news that moves **global markets** (S&P 500, BTC, Oil, Gold, FX, major indices, large-cap stocks).
 
 ${CATEGORY_DESCRIPTIONS}
@@ -622,10 +614,6 @@ Return the classification result. If it's local fluff or won't move global marke
       tradingSignal: object.tradingSignal,
     }
 
-    // Store in cache after successful AI processing
-    classificationCache.set(input.url, input.title, result)
-    console.log(`🤖 AI Processed: "${input.title.substring(0, 50)}${input.title.length > 50 ? "..." : ""}"`)
-
     return result
   } catch (error) {
     console.error("[classifyArticle] LLM classification failed, using keyword fallback:", error)
@@ -643,10 +631,6 @@ Return the classification result. If it's local fluff or won't move global marke
       reasons: fallback.reasons,
       tradingSignal: fallback.score >= 70 ? "Buy" : fallback.score <= 30 ? "Sell" : "Hold/Watch",
     }
-
-    // Store fallback result in cache as well
-    classificationCache.set(input.url, input.title, fallbackResult)
-    console.log(`🤖 AI Processed (fallback): "${input.title.substring(0, 50)}${input.title.length > 50 ? "..." : ""}"`)
 
     return fallbackResult
   }

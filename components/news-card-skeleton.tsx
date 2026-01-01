@@ -8,7 +8,7 @@ type NewsCardSkeletonProps = {
 export function NewsCardSkeleton({ compact = false }: NewsCardSkeletonProps) {
   if (compact) {
     return (
-      <Card className="bg-card/80 backdrop-blur-sm">
+      <Card className="bg-zinc-950/50 backdrop-blur-sm">
         <CardContent className="p-3 flex items-center gap-4">
           <Skeleton className="h-8 w-24 rounded-full" />
           <div className="flex-1 space-y-2">

@@ -200,7 +200,7 @@ const FALLBACK_EVENTS = [
 
 export async function getCalendarEvents() {
   const fmpKey = process.env.FMP_API_KEY
-  const finnhubKey = process.env.FINNHUB_API_KEY
+  const finnhubKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY
 
   console.log("[v0] Calendar Check - Keys present:", { fmp: !!fmpKey, finnhub: !!finnhubKey })
 

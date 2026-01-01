@@ -68,7 +68,7 @@ export function LatestTrades() {
   }
 
   return (
-    <div className="bg-card/50 rounded-lg border border-border overflow-hidden">
+    <div className="bg-zinc-950/50 rounded-lg border border-white/10 overflow-hidden">
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-sm">ALPHA TRACKER</h3>

@@ -3,7 +3,9 @@ import type { Metadata } from "next"
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "@/components/toaster"
-import "./globals.css"
+import { AuroraBackground } from "@/components/aurora-background"
+import { Spotlight } from "@/components/spotlight"
+import "@/styles/globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
@@ -40,6 +42,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`font-sans antialiased`}>
+        <AuroraBackground />
+        <Spotlight />
+        <div className="fixed inset-0 arc-grid pointer-events-none z-0 opacity-30" />
+        <div className="scanline" />
         {children}
         <Toaster />
         <Analytics />

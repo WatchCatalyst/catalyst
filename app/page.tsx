@@ -8,7 +8,7 @@ import { ArticleDetailModal } from "@/components/article-detail-modal"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { SmartAlertsPanel } from "@/components/smart-alerts-panel"
 import { MarketOverview } from "@/components/market-overview"
-import { RefreshCw, Bell, BellOff, LayoutGrid, List, Star, Radio, Pause } from "lucide-react"
+import { RefreshCw, Bell, BellOff, LayoutGrid, List, Star, Radio, Pause, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { newsClient } from "@/lib/news-client"
 import { useToast } from "@/hooks/use-toast"
@@ -19,7 +19,7 @@ import { detectTickers } from "@/lib/ticker-detection"
 import Image from "next/image"
 import { CatalystCalendar } from "@/components/catalyst-calendar"
 import { WatchlistSidebar } from "@/components/watchlist-sidebar"
-import { getTopicLabel, MarketTopic } from "@/lib/market-relevance-classifier"
+import type { MarketTopic } from "@/lib/market-relevance-classifier"
 import { SystemHealth } from "@/components/system-health"
 import { NewsCardSkeleton } from "@/components/news-card-skeleton"
 import { PortfolioManager } from "@/components/portfolio-manager"
@@ -29,6 +29,11 @@ import { LatestTrades } from "@/components/latest-trades"
 import { Badge } from "@/components/ui/badge"
 import { SmartNotifications } from "@/components/smart-notifications"
 import { ContextChart } from "@/components/context-chart"
+import { EarningsCalendar } from "@/components/earnings-calendar"
+import { SECFilings } from "@/components/sec-filings"
+import { AnalystRatings } from "@/components/analyst-ratings"
+import { CryptoPrices } from "@/components/crypto-prices"
+import { SocialSentiment } from "@/components/social-sentiment"
 
 export type NewsCategoryType = "all" | "crypto" | "stocks" | "war" | "technology" | "politics" | "animals" | "sports"
 
@@ -51,8 +56,16 @@ export type NewsItem = {
 }
 
 const getKey = (pageIndex: number, previousPageData: any, selectedCategory: NewsCategoryType) => {
-  if (previousPageData && !previousPageData.length) return null // reached the end
-  return `/api/news?category=${selectedCategory}&page=${pageIndex + 1}`
+  // If previous page had no data or was empty, stop fetching
+  if (pageIndex > 0 && (!previousPageData || previousPageData.length === 0)) {
+    return null
+  }
+  
+  // Calculate offset: page 0 = 0, page 1 = 25, page 2 = 50, etc.
+  const limit = 25
+  const offset = pageIndex * limit
+  
+  return `/api/news?limit=${limit}&offset=${offset}`
 }
 
 // Component to display "Last updated: X ago"
@@ -190,11 +203,11 @@ export default function Home() {
     }
   }, [])
 
-  const fetchPage = (url: string) => {
-    const params = new URLSearchParams(url.split("?")[1])
-    const category = params.get("category") as NewsCategoryType
-    const page = Number.parseInt(params.get("page") || "1", 10)
-    return newsClient.fetchNews(category, page)
+  const fetchPage = async (url: string) => {
+    // Fetch from the API endpoint (url includes pagination params like ?limit=25&offset=0)
+    const response = await fetch(url)
+    const result = await response.json()
+    return result.data || []
   }
 
   const {
@@ -217,7 +230,8 @@ export default function Home() {
   const news = data ? data.flat() : []
   const isLoadingMore = isValidating || (size > 0 && data && typeof data[size - 1] === "undefined")
   const isEmpty = data?.[0]?.length === 0
-  const isReachingEnd = isEmpty || (data && data[data.length - 1]?.length < 25)
+  // Check if we've reached the end (last page had fewer than 25 items or was empty)
+  const isReachingEnd = isEmpty || (data && data[data.length - 1] && data[data.length - 1].length < 25)
 
   const handleBookmark = (id: string) => {
     const newBookmarks = new Set(bookmarkedIds)
@@ -375,61 +389,35 @@ export default function Home() {
     return portfolio.some((asset) => text.includes(asset.symbol) || tickers.some((t) => t.symbol === asset.symbol))
   }
 
+  // Simplified: API handles all filtering via custom script
+  // Only apply search filter on frontend (real-time search)
   const filteredNews = useMemo(
-    () =>
-      news.filter((item: NewsItem) => {
-        // Portfolio awareness: bypass relevance score if article matches portfolio holdings
-        const isHolding = isRelevantToPortfolio(item)
-        if (isHolding) {
-          // Portfolio matches always pass, regardless of relevance score
-          // Continue with other filters below
-        } else {
-          // Non-portfolio articles must meet relevance score threshold
-          if (item.relevanceScore < minRelevanceScore) {
-            return false
-          }
-        }
-
-        // Search filter
-        if (searchQuery) {
-          const query = searchQuery.toLowerCase()
-          const matchesSearch =
-            item.title.toLowerCase().includes(query) ||
-            item.summary.toLowerCase().includes(query) ||
-            (item.keywords && item.keywords.some((keyword: string) => keyword.toLowerCase().includes(query))) ||
-            item.source.toLowerCase().includes(query)
-
-          if (!matchesSearch) return false
-        }
-
-        // Watchlist filter
-        if (showWatchlistOnly) {
-          if (!isHolding) {
-            return false
-          }
-        }
-
-        // Topic filter (portfolio holdings bypass this)
-        if (selectedTopics.length > 0 && !isHolding) {
-          const articleTopics = (item as any).classification?.topics || item.topics || []
-          const hasMatchingTopic = articleTopics.some((topic: string) => selectedTopics.includes(topic))
-          if (!hasMatchingTopic) {
-            return false
-          }
-        }
-
-        return true
-      }),
-    [news, minRelevanceScore, searchQuery, showWatchlistOnly, portfolio, selectedTopics],
+    () => {
+      if (!searchQuery) return news
+      
+      const query = searchQuery.toLowerCase()
+      return news.filter((item: NewsItem) =>
+        item.title.toLowerCase().includes(query) ||
+        item.summary.toLowerCase().includes(query) ||
+        (item.keywords && item.keywords.some((keyword: string) => keyword.toLowerCase().includes(query))) ||
+        item.source.toLowerCase().includes(query)
+      )
+    },
+    [news, searchQuery],
   )
 
-  const sortedNews = [...filteredNews].sort((a, b) => {
-    const aRelevant = isRelevantToPortfolio(a)
-    const bRelevant = isRelevantToPortfolio(b)
-    if (aRelevant && !bRelevant) return -1
-    if (!aRelevant && bRelevant) return 1
-    return 0
-  })
+  // Sort by portfolio relevance if portfolio exists, otherwise keep API order
+  const sortedNews = useMemo(() => {
+    if (portfolio.length === 0) return filteredNews
+    
+    return [...filteredNews].sort((a, b) => {
+      const aRelevant = isRelevantToPortfolio(a)
+      const bRelevant = isRelevantToPortfolio(b)
+      if (aRelevant && !bRelevant) return -1
+      if (!aRelevant && bRelevant) return 1
+      return 0
+    })
+  }, [filteredNews, portfolio])
 
   const articleCounts = news.reduce(
     (acc: Record<NewsCategoryType, number>, item: NewsItem) => {
@@ -442,8 +430,8 @@ export default function Home() {
 
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <div className="min-h-screen bg-transparent relative z-10">
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-black/50 backdrop-blur-md supports-[backdrop-filter]:bg-black/30">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4">
             {/* First row: Branding and primary actions */}
@@ -508,6 +496,35 @@ export default function Home() {
                 </div>
               )}
 
+              {/* Reset button */}
+              <Button
+                onClick={() => {
+                  // Clear all filters and localStorage
+                  localStorage.removeItem("watchcatalyst-preferences")
+                  localStorage.removeItem("watchcatalyst-bookmarks")
+                  localStorage.removeItem("watchcatalyst-portfolio")
+                  localStorage.removeItem("watchcatalyst-alerts")
+                  // Reset state
+                  setSearchQuery("")
+                  setSelectedCategory("all")
+                  setShowWatchlistOnly(false)
+                  setSelectedTopics([])
+                  setMinRelevanceScore(0)
+                  // Refresh news
+                  handleRefresh(false)
+                  toast({
+                    title: "Reset to US defaults",
+                    description: "All filters cleared, showing US market feed",
+                  })
+                }}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 sm:gap-2 bg-transparent h-8 px-2 sm:px-3"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span className="hidden sm:inline">Reset</span>
+              </Button>
+
               {/* Refresh button */}
               <Button
                 onClick={() => handleRefresh(false)}
@@ -544,109 +561,28 @@ export default function Home() {
               <ContextChart symbol={searchQuery} articles={filteredNews} />
             )}
 
-            {/* Topic Filter Chips */}
-            <div className="flex flex-col gap-3 pb-4 border-b border-border">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Filter by topic:</span>
+            {/* Search and View Controls */}
+
+            {/* View Controls */}
+            <div className="flex items-center justify-between gap-4 pb-4 border-b border-border">
+              <div className="flex items-center gap-2">
                 <Button
-                  variant={selectedTopics.length === 0 ? "default" : "outline"}
+                  variant={viewMode === "card" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => {
-                    setSelectedTopics([])
-                    const prefs = localStorage.getItem("watchcatalyst-preferences")
-                    const parsed = prefs ? JSON.parse(prefs) : {}
-                    localStorage.setItem(
-                      "watchcatalyst-preferences",
-                      JSON.stringify({ ...parsed, selectedTopics: [] }),
-                    )
-                    window.dispatchEvent(new Event("preferences-updated"))
-                  }}
-                  className="h-7 text-xs"
+                  onClick={() => setViewMode("card")}
+                  className="h-8 px-3"
                 >
-                  All
+                  <LayoutGrid className="h-4 w-4 mr-2" />
+                  Card
                 </Button>
-                {(
-                  [
-                    "RATES_CENTRAL_BANKS",
-                    "INFLATION_MACRO",
-                    "REGULATION_POLICY",
-                    "EARNINGS_FINANCIALS",
-                    "MA_CORPORATE_ACTIONS",
-                    "TECH_PRODUCT",
-                    "SECURITY_INCIDENT",
-                    "ETFS_FLOWS",
-                    "LEGAL_ENFORCEMENT",
-                    "GEOPOLITICS_CRISIS",
-                  ] as MarketTopic[]
-                ).map((topic) => {
-                  const isSelected = selectedTopics.includes(topic)
-                  return (
-                    <Button
-                      key={topic}
-                      variant={isSelected ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        const newTopics = isSelected
-                          ? selectedTopics.filter((t) => t !== topic)
-                          : [...selectedTopics, topic]
-                        setSelectedTopics(newTopics)
-                        const prefs = localStorage.getItem("watchcatalyst-preferences")
-                        const parsed = prefs ? JSON.parse(prefs) : {}
-                        localStorage.setItem(
-                          "watchcatalyst-preferences",
-                          JSON.stringify({ ...parsed, selectedTopics: newTopics }),
-                        )
-                        window.dispatchEvent(new Event("preferences-updated"))
-                      }}
-                      className={`h-7 text-xs ${
-                        isSelected ? "bg-accent-bright hover:bg-accent-bright/90" : ""
-                      }`}
-                    >
-                      {getTopicLabel(topic)}
-                    </Button>
-                  )
-                })}
-              </div>
-              {selectedTopics.length > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  Showing {selectedTopics.length} topic{selectedTopics.length !== 1 ? "s" : ""}. Portfolio holdings
-                  shown regardless of filter.
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-border">
-              {/* Control bar */}
-              <div className="flex items-center gap-4 px-6 py-3 border-b border-border">
-                {/* View mode toggles */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant={viewMode === "card" ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => setViewMode("card")}
-                    className="h-7 px-2"
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant={viewMode === "compact" ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => setViewMode("compact")}
-                    className="h-7 px-2"
-                  >
-                    <List className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Portfolio toggle */}
                 <Button
-                  variant={showWatchlistOnly ? "default" : "outline"}
+                  variant={viewMode === "compact" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setShowWatchlistOnly(!showWatchlistOnly)}
-                  className="gap-2"
+                  onClick={() => setViewMode("compact")}
+                  className="h-8 px-3"
                 >
-                  <Star className={`h-4 w-4 ${showWatchlistOnly ? "fill-current" : ""}`} />
-                  <span className="hidden sm:inline">Portfolio</span>
+                  <List className="h-4 w-4 mr-2" />
+                  Compact
                 </Button>
               </div>
             </div>
@@ -664,13 +600,11 @@ export default function Home() {
             ) : sortedNews.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">
-                  {minRelevanceScore > 0
-                    ? `No high-impact news found (minimum relevance score: ${minRelevanceScore})`
-                    : "No news found matching your filters"}
+                  {searchQuery ? "No news found matching your search" : "No news available at this time"}
                 </p>
-                {minRelevanceScore >= 80 && (
+                {!searchQuery && (
                   <p className="text-sm text-muted-foreground mt-2">
-                    Try lowering the minimum relevance score in Settings to see more articles.
+                    Try refreshing the feed or check back later.
                   </p>
                 )}
               </div>
@@ -719,8 +653,33 @@ export default function Home() {
 
           <div className="lg:col-span-1 space-y-4">
             <WatchlistSidebar />
+            
+            {/* Crypto Prices - Top of sidebar */}
+            <CryptoPrices />
+            
+            {/* Social Sentiment */}
+            <div className="max-h-[500px] overflow-hidden">
+              <SocialSentiment />
+            </div>
+            
+            {/* Earnings Calendar */}
+            <div className="max-h-[500px] overflow-hidden">
+              <EarningsCalendar />
+            </div>
+
+            {/* Economic Calendar */}
             <div className="max-h-[400px] overflow-hidden">
               <CatalystCalendar />
+            </div>
+
+            {/* Analyst Ratings */}
+            <div className="max-h-[500px] overflow-hidden">
+              <AnalystRatings />
+            </div>
+
+            {/* SEC Filings */}
+            <div className="max-h-[500px] overflow-hidden">
+              <SECFilings />
             </div>
 
             {/* Latest Trades Feed */}
@@ -741,7 +700,7 @@ export default function Home() {
               </>
             )}
 
-            <div className="sticky top-24 p-4 rounded-lg bg-card/50 border border-border">
+            <div className="sticky top-24 p-4 rounded-lg bg-zinc-950/50 backdrop-blur-sm border border-white/10">
               <h3 className="text-sm font-semibold mb-3">Keyboard Shortcuts</h3>
               <div className="space-y-2 text-xs text-muted-foreground">
                 <div className="flex justify-between">

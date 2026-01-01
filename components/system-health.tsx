@@ -25,7 +25,7 @@ export function SystemHealth() {
 
   if (loading) return null
 
-  const allGood = status?.theNewsApi.configured && status?.fmpApi.configured
+  const allGood = status?.eodhdApi.configured && status?.fmpApi.configured
 
   return (
     <Dialog>
@@ -48,12 +48,12 @@ export function SystemHealth() {
         <div className="space-y-4">
           <div className="flex items-center justify-between p-3 border rounded-lg">
             <div className="space-y-0.5">
-              <h4 className="text-sm font-medium">TheNewsAPI (Main Feed)</h4>
+              <h4 className="text-sm font-medium">EODHD (News, Earnings, IPOs)</h4>
               <p className="text-xs text-muted-foreground">
-                {status?.theNewsApi.configured ? "API Key Configured" : "Missing API Key"}
+                {status?.eodhdApi.configured ? "API Key Configured" : "Missing API Key"}
               </p>
             </div>
-            {status?.theNewsApi.configured ? (
+            {status?.eodhdApi.configured ? (
               <CheckCircle2 className="h-5 w-5 text-green-500" />
             ) : (
               <XCircle className="h-5 w-5 text-red-500" />

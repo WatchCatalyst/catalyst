@@ -57,8 +57,7 @@ function mapTransactionType(type: string): "Buy" | "Sell" {
  * Fetch politician trades (Senate) from FMP API
  */
 export async function getPoliticianTrades(): Promise<AlphaTrade[]> {
-  // TEMPORARY: Hardcoded for debugging - replace with process.env.NEXT_PUBLIC_FMP_API_KEY after testing
-  const apiKey = "bKsbxmGBlmGXJw9qyVGuTzZgVpix66ok"
+  const apiKey = process.env.FMP_API_KEY
 
   if (!apiKey) {
     console.warn("[alpha-service] FMP API key not configured. Politician trades will not be available.")
@@ -109,8 +108,7 @@ export async function getPoliticianTrades(): Promise<AlphaTrade[]> {
  * Fetch insider trades (Corporate Insiders) from FMP API
  */
 export async function getInsiderTrades(): Promise<AlphaTrade[]> {
-  // TEMPORARY: Hardcoded for debugging - replace with process.env.NEXT_PUBLIC_FMP_API_KEY after testing
-  const apiKey = "bKsbxmGBlmGXJw9qyVGuTzZgVpix66ok"
+  const apiKey = process.env.FMP_API_KEY
 
   if (!apiKey) {
     console.warn("[alpha-service] FMP API key not configured. Insider trades will not be available.")

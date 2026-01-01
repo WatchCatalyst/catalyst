@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/service"
 
 export type CachedNewsResponse = {
   articles: any[]
@@ -6,9 +7,13 @@ export type CachedNewsResponse = {
   expires_at: string
 }
 
-// Cache TTL: 1 minute
+// Cache TTL: 1 minute (60 seconds)
 const CACHE_TTL_MS = 60 * 1000
 
+/**
+ * Get cached news from Supabase
+ * Uses regular client (anon key) for reads - this is fine with RLS disabled
+ */
 export async function getCachedNews(
   category: string,
   page: number,
@@ -26,7 +31,7 @@ export async function getCachedNews(
       .maybeSingle()
 
     if (error || !data) {
-      console.log("[v0] Cache miss for category:", category, "page:", page, "timeRange:", timeRange)
+      console.log("[Cache] Miss for category:", category, "page:", page, "timeRange:", timeRange)
       return null
     }
 
@@ -35,35 +40,44 @@ export async function getCachedNews(
     const expiresAt = new Date(data.expires_at)
 
     if (now > expiresAt) {
-      console.log("[v0] Cache expired for category:", category, "page:", page, "timeRange:", timeRange)
+      console.log("[Cache] Expired for category:", category, "page:", page, "timeRange:", timeRange)
       return null
     }
 
-    console.log("[v0] Cache hit for category:", category, "page:", page, "timeRange:", timeRange)
+    console.log("[Cache] Hit for category:", category, "page:", page, "timeRange:", timeRange)
     return {
       articles: data.articles as any[],
       cached_at: data.created_at,
       expires_at: data.expires_at,
     }
   } catch (error) {
-    console.error("[v0] Error reading from cache:", error)
+    console.error("[Cache] Error reading:", error)
     return null
   }
 }
 
+/**
+ * Store news in Supabase cache
+ * Uses service role client to bypass any RLS issues
+ */
 export async function setCachedNews(
   category: string,
   page: number,
   articles: any[],
   timeRange = "all",
-  cacheTTL = 60 * 1000,
+  cacheTTL = CACHE_TTL_MS,
 ): Promise<void> {
   try {
-    const supabase = await createClient()
+    // Use service client for writes (bypasses RLS)
+    const supabase = createServiceClient()
+    
+    if (!supabase) {
+      console.warn("[Cache] No service client available - skipping cache write")
+      return
+    }
 
     const now = new Date()
     const expiresAt = new Date(now.getTime() + cacheTTL)
-
     const cacheKey = `${category}-${page}-${timeRange}`
 
     // Upsert the cache entry
@@ -72,7 +86,7 @@ export async function setCachedNews(
         cache_key: cacheKey,
         category,
         page,
-        time_range: timeRange, // Add time_range column
+        time_range: timeRange,
         articles,
         created_at: now.toISOString(),
         expires_at: expiresAt.toISOString(),
@@ -83,41 +97,48 @@ export async function setCachedNews(
     )
 
     if (error) {
-      console.error("[v0] Error writing to cache:", error)
+      console.error("[Cache] Error writing:", error)
     } else {
       console.log(
-        "[v0] Cached",
+        "[Cache] Stored",
         articles.length,
-        "articles for category:",
+        "articles | category:",
         category,
-        "page:",
+        "| page:",
         page,
-        "timeRange:",
-        timeRange,
-        "TTL:",
+        "| TTL:",
         cacheTTL / 1000,
         "seconds",
       )
     }
   } catch (error) {
-    console.error("[v0] Error setting cache:", error)
+    console.error("[Cache] Error in setCachedNews:", error)
   }
 }
 
+/**
+ * Clear expired cache entries
+ * Uses service role client for delete operations
+ */
 export async function clearExpiredCache(): Promise<void> {
   try {
-    const supabase = await createClient()
+    const supabase = createServiceClient()
+    
+    if (!supabase) {
+      console.warn("[Cache] No service client available - skipping cache cleanup")
+      return
+    }
 
     const now = new Date().toISOString()
 
     const { error } = await supabase.from("news_cache").delete().lt("expires_at", now)
 
     if (error) {
-      console.error("[v0] Error clearing expired cache:", error)
+      console.error("[Cache] Error clearing expired:", error)
     } else {
-      console.log("[v0] Cleared expired cache entries")
+      console.log("[Cache] Cleared expired entries")
     }
   } catch (error) {
-    console.error("[v0] Error in clearExpiredCache:", error)
+    console.error("[Cache] Error in clearExpiredCache:", error)
   }
 }

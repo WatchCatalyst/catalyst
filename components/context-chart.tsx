@@ -173,7 +173,7 @@ export function ContextChart({ symbol, articles }: ContextChartProps) {
   }
 
   return (
-    <div className="w-full bg-card/50 rounded-lg border border-border p-4">
+    <div className="w-full bg-zinc-950/50 rounded-lg border border-white/10 p-4">
       <div className="mb-3">
         <h3 className="text-sm font-semibold">
           {symbol} Price Chart with News Events

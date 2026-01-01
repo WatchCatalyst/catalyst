@@ -41,7 +41,7 @@ export function MarketOverview({ news }: MarketOverviewProps) {
   return (
     <div className="grid grid-cols-3 gap-2 md:gap-3 mb-6">
       {/* Market Mood Card */}
-      <Card className="bg-card/50 backdrop-blur-sm border-border">
+      <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10">
         <CardContent className="p-2 md:p-4 h-full flex flex-col justify-between min-h-[80px] md:min-h-[100px]">
           <div className="flex items-center gap-1 md:gap-2 text-muted-foreground">
             <Activity className="h-3 w-3 md:h-4 md:w-4 shrink-0" />
@@ -60,7 +60,7 @@ export function MarketOverview({ news }: MarketOverviewProps) {
       </Card>
 
       {/* Bullish Sentiment Card */}
-      <Card className="bg-card/50 backdrop-blur-sm border-border">
+      <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10">
         <CardContent className="p-2 md:p-4 h-full flex flex-col justify-between min-h-[80px] md:min-h-[100px]">
           <div className="flex items-center gap-1 md:gap-2 text-muted-foreground">
             <TrendingUp className="h-3 w-3 md:h-4 md:w-4 shrink-0" />
@@ -76,7 +76,7 @@ export function MarketOverview({ news }: MarketOverviewProps) {
       </Card>
 
       {/* Bearish Sentiment Card */}
-      <Card className="bg-card/50 backdrop-blur-sm border-border">
+      <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10">
         <CardContent className="p-2 md:p-4 h-full flex flex-col justify-between min-h-[80px] md:min-h-[100px]">
           <div className="flex items-center gap-1 md:gap-2 text-muted-foreground">
             <TrendingDown className="h-3 w-3 md:h-4 md:w-4 shrink-0" />

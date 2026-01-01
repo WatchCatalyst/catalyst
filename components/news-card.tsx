@@ -165,7 +165,7 @@ export function NewsCard({
     return (
       <Card
         id={`news-${news.id}`}
-        className={`hover:bg-accent/5 transition-colors duration-200 bg-card/80 backdrop-blur-sm group border-l-4 ${
+        className={`hover:bg-white/5 transition-colors duration-200 bg-zinc-950/50 backdrop-blur-sm group border-l-4 ${
           isHolding
             ? "border-l-yellow-500"
             : news.sentiment === "bullish"
@@ -247,7 +247,7 @@ export function NewsCard({
   return (
     <Card
       id={`news-${news.id}`}
-      className={`hover:border-accent-bright/50 transition-all duration-200 bg-card/80 backdrop-blur-sm relative ${
+      className={`hover:border-accent-bright/50 transition-all duration-200 bg-zinc-950/50 backdrop-blur-sm relative ${
         isHolding ? "ring-2 ring-yellow-500/30 border-yellow-500/20" : isRelevantToPortfolio ? "ring-2 ring-accent-bright/30" : ""
       }`}
     >
@@ -297,7 +297,13 @@ export function NewsCard({
               </div>
             </div>
 
-            <p className="text-sm text-muted-foreground leading-relaxed text-pretty">{linkifyTickers(news.summary)}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed text-pretty">
+              {linkifyTickers(
+                news.summary.length > 200 
+                  ? news.summary.substring(0, 200).trim() + "..." 
+                  : news.summary
+              )}
+            </p>
 
             {renderTopicBadges()}
 
