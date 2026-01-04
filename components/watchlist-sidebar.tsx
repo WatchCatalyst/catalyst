@@ -1,9 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { TrendingUp, TrendingDown } from "lucide-react"
 import { getMarketPrices, type PriceData } from "@/lib/price-service"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+
+// Track previous prices for flash animation
+type PriceFlash = { [symbol: string]: "up" | "down" | null }
 
 type PortfolioAsset = {
   symbol: string
@@ -14,6 +17,8 @@ export function WatchlistSidebar() {
   const [prices, setPrices] = useState<PriceData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [priceFlash, setPriceFlash] = useState<PriceFlash>({})
+  const prevPricesRef = useRef<{ [symbol: string]: number }>({})
 
   const fetchPrices = async () => {
     try {
@@ -54,6 +59,23 @@ export function WatchlistSidebar() {
       }
 
       const priceData = await getMarketPrices(symbols)
+      
+      // Detect price changes for flash animation
+      const newFlashes: PriceFlash = {}
+      priceData.forEach((pd) => {
+        const prevPrice = prevPricesRef.current[pd.symbol]
+        if (prevPrice !== undefined && prevPrice !== pd.price) {
+          newFlashes[pd.symbol] = pd.price > prevPrice ? "up" : "down"
+        }
+        prevPricesRef.current[pd.symbol] = pd.price
+      })
+      
+      if (Object.keys(newFlashes).length > 0) {
+        setPriceFlash(newFlashes)
+        // Clear flashes after animation
+        setTimeout(() => setPriceFlash({}), 800)
+      }
+      
       setPrices(priceData)
       setError(null)
     } catch (err) {
@@ -70,7 +92,7 @@ export function WatchlistSidebar() {
 
     const intervalId = setInterval(() => {
       fetchPrices()
-    }, 60000) // 60 seconds
+    }, 120000) // 2 minutes (matches server cache - prevents unnecessary requests)
 
     // Also listen for portfolio updates
     const handlePortfolioUpdate = () => {
@@ -105,9 +127,9 @@ export function WatchlistSidebar() {
   // Empty state
   if (!isLoading && prices.length === 0 && !error) {
     return (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Your Portfolio</CardTitle>
+      <Card className="glass-premium backdrop-glow">
+        <CardHeader className="pb-3 border-b border-border/50 bg-gradient-to-r from-zinc-900/30 to-transparent">
+          <CardTitle className="text-sm font-semibold font-display gradient-text-cyan">Your Portfolio</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-xs text-muted-foreground">Add symbols to your watchlist to see live prices here.</p>
@@ -117,9 +139,9 @@ export function WatchlistSidebar() {
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold">Your Portfolio</CardTitle>
+    <Card className="glass-premium backdrop-glow">
+      <CardHeader className="pb-3 border-b border-border/50 bg-gradient-to-r from-zinc-900/30 to-transparent">
+        <CardTitle className="text-sm font-semibold font-display gradient-text-cyan">Your Portfolio</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         {isLoading && prices.length === 0 ? (
@@ -130,14 +152,17 @@ export function WatchlistSidebar() {
           prices.map((priceData) => {
             const isPositive = priceData.change >= 0
             const changeColor = isPositive ? "text-success" : "text-danger"
+            const flashClass = priceFlash[priceData.symbol] === "up" 
+              ? "price-flash-up" 
+              : priceFlash[priceData.symbol] === "down" 
+                ? "price-flash-down" 
+                : ""
 
             return (
               <div
                 key={priceData.symbol}
-                className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer group"
+                className={`flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-gradient-to-r hover:from-white/5 hover:to-transparent transition-all cursor-pointer group hover:scale-[1.02] hover:shadow-sm ${flashClass}`}
                 onClick={() => {
-                  // Optional: Filter news feed by symbol
-                  // This could trigger a search or filter action
                   const event = new CustomEvent("watchlist-symbol-clicked", { detail: { symbol: priceData.symbol } })
                   window.dispatchEvent(event)
                 }}
@@ -146,14 +171,16 @@ export function WatchlistSidebar() {
                   <span className="text-sm font-medium text-foreground font-mono">${priceData.symbol}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-sm font-medium text-foreground">{formatPrice(priceData.price)}</span>
+                  <span className={`text-sm font-medium font-mono ${priceFlash[priceData.symbol] ? (priceFlash[priceData.symbol] === "up" ? "ticker-up text-success" : "ticker-down text-danger") : "text-foreground"}`}>
+                    {formatPrice(priceData.price)}
+                  </span>
                   <div className={`flex items-center gap-0.5 ${changeColor}`}>
                     {isPositive ? (
                       <TrendingUp className="h-3 w-3" />
                     ) : (
                       <TrendingDown className="h-3 w-3" />
                     )}
-                    <span className={`text-xs font-medium ${changeColor}`}>{formatChange(priceData.change)}</span>
+                    <span className={`text-xs font-medium font-mono ${changeColor}`}>{formatChange(priceData.change)}</span>
                   </div>
                 </div>
               </div>
@@ -162,7 +189,7 @@ export function WatchlistSidebar() {
         )}
         {prices.length > 0 && (
           <div className="text-xs text-muted-foreground pt-2 border-t border-border">
-            Updates every 60s
+            Updates every 2 minutes
           </div>
         )}
       </CardContent>

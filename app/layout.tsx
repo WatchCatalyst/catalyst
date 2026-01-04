@@ -1,14 +1,29 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Space_Grotesk, JetBrains_Mono, Inter } from 'next/font/google'
 import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "@/components/toaster"
 import { AuroraBackground } from "@/components/aurora-background"
 import { Spotlight } from "@/components/spotlight"
 import "@/styles/globals.css"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+const spaceGrotesk = Space_Grotesk({ 
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+})
+
+const jetbrainsMono = JetBrains_Mono({ 
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+})
+
+const inter = Inter({ 
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+})
 
 export const metadata: Metadata = {
   title: "WatchCatalyst - Real-time Trading News Intelligence",
@@ -40,8 +55,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={`font-sans antialiased`}>
+    <html lang="en" className={`dark ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${inter.variable}`}>
+      <body className="font-sans antialiased">
         <AuroraBackground />
         <Spotlight />
         <div className="fixed inset-0 arc-grid pointer-events-none z-0 opacity-30" />

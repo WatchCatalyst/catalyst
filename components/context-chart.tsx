@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickSeries } from "lightweight-charts"
+import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickData, CandlestickSeries } from "lightweight-charts"
 import { getChartData } from "@/lib/chart-service"
 import type { NewsItem } from "@/app/page"
 
@@ -43,7 +43,7 @@ export function ContextChart({ symbol, articles }: ContextChartProps) {
     chartRef.current = chart
 
     // Create candlestick series
-    // In lightweight-charts v5, use addSeries with CandlestickSeries type
+    // lightweight-charts v5.0+ uses addSeries(CandlestickSeries, options)
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#10B981", // Green
       downColor: "#EF4444", // Red
@@ -126,9 +126,18 @@ export function ContextChart({ symbol, articles }: ContextChartProps) {
           }
         })
 
-        // Set markers on the series
+        // Set markers on the series (check if method exists)
         if (markers.length > 0) {
-          candlestickSeries.setMarkers(markers)
+          // Try series method first (lightweight-charts v4+)
+          if (typeof candlestickSeries.setMarkers === 'function') {
+            candlestickSeries.setMarkers(markers)
+          } else if (typeof (chart as any).setMarkers === 'function') {
+            // Fallback to chart-level markers (older versions)
+            (chart as any).setMarkers(markers.map(m => ({ ...m, series: candlestickSeries })))
+          } else {
+            // If neither method exists, log a warning but don't crash
+            console.warn('[ContextChart] setMarkers method not available on series or chart')
+          }
         }
 
         // Fit content to view

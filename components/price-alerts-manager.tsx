@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { Bell, BellRing, Plus, X, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"
+import { Bell, Plus, X, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -140,19 +140,14 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2 bg-transparent relative">
-          {activeAlerts > 0 ? (
-            <BellRing className="h-4 w-4 animate-pulse text-accent-bright" />
-          ) : (
-            <Bell className="h-4 w-4" />
-          )}
-          <span className="hidden sm:inline">Alerts</span>
+        <button className="px-3 py-1.5 text-xs font-semibold tracking-wide text-zinc-500 hover:text-white transition-colors relative">
+          ALERTS
           {activeAlerts > 0 && (
-            <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-accent-bright text-black text-[10px]">
+            <span className="absolute -top-1 -right-2 h-4 w-4 flex items-center justify-center rounded-full bg-emerald-400 text-black text-[9px] font-bold">
               {activeAlerts}
-            </Badge>
+            </span>
           )}
-        </Button>
+        </button>
       </DialogTrigger>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>

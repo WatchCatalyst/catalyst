@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Settings, Plus, X } from "lucide-react"
+import { Plus, X } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
 import type { NewsCategory } from "@/app/page"
 import { useToast } from "@/hooks/use-toast"
@@ -164,10 +164,9 @@ export function SettingsDialog() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2 bg-transparent">
-          <Settings className="h-4 w-4" />
-          <span className="hidden sm:inline">Settings</span>
-        </Button>
+        <button className="px-3 py-1.5 text-xs font-semibold tracking-wide text-zinc-500 hover:text-white transition-colors">
+          SETTINGS
+        </button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>

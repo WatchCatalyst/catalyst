@@ -96,50 +96,69 @@ async function fetchCryptoPrices(symbols: string[]): Promise<PriceData[]> {
     return []
   }
 
-  // Create abort controller for timeout (better compatibility than AbortSignal.timeout)
+  // Use our own API endpoint to avoid CORS issues and rate limiting
+  // This routes through our server-side API which handles CoinGecko calls
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 5000)
+  const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
 
   try {
+    // Use our internal API endpoint which proxies to CoinGecko
     const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=usd&include_24hr_change=true`,
+      `/api/crypto/prices?symbols=${symbols.join(",")}&limit=50`,
       {
         headers: {
           Accept: "application/json",
         },
         signal: controller.signal,
+        // Cache respected by server (2 minutes)
       },
     )
 
     clearTimeout(timeoutId)
 
     if (!response.ok) {
-      throw new Error(`CoinGecko API error: ${response.status}`)
+      throw new Error(`Crypto prices API error: ${response.status}`)
     }
 
-    const data = await response.json()
+    const apiData = await response.json()
+    
+    if (!apiData.success || !Array.isArray(apiData.data)) {
+      console.warn("[price-service] Invalid API response:", apiData)
+      return []
+    }
 
-    // Map back to symbols
-    const idToSymbol: Record<string, string> = {}
-    Object.entries(symbolToId).forEach(([symbol, id]) => {
-      idToSymbol[id] = symbol
+    // Create a map of symbol -> price data for quick lookup
+    const priceMap = new Map<string, PriceData>()
+    apiData.data.forEach((item: any) => {
+      if (item.symbol && item.price != null) {
+        priceMap.set(item.symbol.toUpperCase(), {
+          symbol: item.symbol.toUpperCase(),
+          price: item.price,
+          change: item.changePercent24h || 0,
+        })
+      }
     })
 
-    return Object.entries(data)
-      .map(([id, priceData]: [string, any]) => {
-        const symbol = idToSymbol[id]
-        if (!symbol || !priceData.usd) return null
-
-        return {
-          symbol,
-          price: priceData.usd,
-          change: priceData.usd_24h_change || 0,
-        }
-      })
+    // Return prices for requested symbols (only those found in API response)
+    return symbols
+      .map((symbol) => priceMap.get(symbol.toUpperCase()))
       .filter((item): item is PriceData => item !== null)
   } catch (error) {
     clearTimeout(timeoutId)
-    console.error("[price-service] Failed to fetch crypto prices:", error)
+    
+    // Handle different error types
+    if (error instanceof Error) {
+      if (error.name === "AbortError") {
+        console.warn("[price-service] Request timeout fetching crypto prices")
+      } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+        console.warn("[price-service] Network error fetching crypto prices - this may be a CORS or connectivity issue")
+      } else {
+        console.error("[price-service] Failed to fetch crypto prices:", error.message)
+      }
+    } else {
+      console.error("[price-service] Failed to fetch crypto prices:", error)
+    }
+    
     // Return empty array on error, caller can handle it
     return []
   }

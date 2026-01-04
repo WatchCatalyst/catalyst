@@ -71,6 +71,12 @@ export function mapEventToTopic(eventTitle: string): MarketTopic {
  * Used as fallback when API is unavailable
  */
 export function getMockUpcomingEvents() {
+  const nowEST = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }))
+  const currentHourEST = nowEST.getHours()
+  
+  // If it's past 12 PM EST, don't show today's events (most economic releases are morning)
+  const showToday = currentHourEST < 12
+  
   const today = new Date()
   const tomorrow = new Date(today)
   tomorrow.setDate(tomorrow.getDate() + 1)
@@ -97,70 +103,53 @@ export function getMockUpcomingEvents() {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   }
 
-  return [
-    {
-      id: "mock-1",
-      title: "US CPI Data Release",
-      time: formatTime(today, 8, 30),
-      date: formatDateLabel(today),
-      dateKey: today.toISOString().split("T")[0],
-      type: "economic" as const,
-      importance: "high" as const,
-      currency: "USD",
-      isUS: true,
-      topic: "INFLATION_MACRO" as MarketTopic,
-      forecast: "3.2%",
-    },
-    {
-      id: "mock-2",
-      title: "FOMC Rate Decision",
-      time: formatTime(tomorrow, 14, 0),
-      date: formatDateLabel(tomorrow),
-      dateKey: tomorrow.toISOString().split("T")[0],
-      type: "economic" as const,
-      importance: "high" as const,
-      currency: "USD",
-      isUS: true,
-      topic: "RATES_CENTRAL_BANKS" as MarketTopic,
-    },
-    {
-      id: "mock-3",
-      title: "NVIDIA Earnings",
-      time: formatTime(tomorrow, 16, 0),
-      date: formatDateLabel(tomorrow),
-      dateKey: tomorrow.toISOString().split("T")[0],
-      type: "economic" as const,
-      importance: "high" as const,
-      ticker: "NVDA",
-      isUS: true,
-      topic: "EARNINGS_FINANCIALS" as MarketTopic,
-    },
-    {
-      id: "mock-4",
-      title: "US Jobs Report (Nonfarm Payrolls)",
-      time: formatTime(dayAfter, 8, 30),
-      date: formatDateLabel(dayAfter),
-      dateKey: dayAfter.toISOString().split("T")[0],
-      type: "economic" as const,
-      importance: "high" as const,
-      currency: "USD",
-      isUS: true,
-      topic: "INFLATION_MACRO" as MarketTopic,
-      forecast: "200K",
-    },
-    {
-      id: "mock-5",
-      title: "ECB Interest Rate Decision",
-      time: formatTime(dayAfter, 8, 15),
-      date: formatDateLabel(dayAfter),
-      dateKey: dayAfter.toISOString().split("T")[0],
-      type: "economic" as const,
-      importance: "high" as const,
-      currency: "EUR",
-      isUS: false,
-      topic: "RATES_CENTRAL_BANKS" as MarketTopic,
-    },
-  ]
+  // Build events array - only show future US events
+  // If it's past noon EST, don't show today's events
+  const events = []
+  
+  // Always start with tomorrow's events (since we're filtering out today if past noon)
+  events.push({
+    id: "mock-1",
+    title: "US CPI Data Release",
+    time: formatTime(tomorrow, 8, 30),
+    date: formatDateLabel(tomorrow),
+    dateKey: tomorrow.toISOString().split("T")[0],
+    type: "economic" as const,
+    importance: "high" as const,
+    currency: "USD",
+    isUS: true,
+    topic: "INFLATION_MACRO" as MarketTopic,
+    forecast: "3.2%",
+  })
+  
+  events.push({
+    id: "mock-2",
+    title: "FOMC Rate Decision",
+    time: formatTime(tomorrow, 14, 0),
+    date: formatDateLabel(tomorrow),
+    dateKey: tomorrow.toISOString().split("T")[0],
+    type: "economic" as const,
+    importance: "high" as const,
+    currency: "USD",
+    isUS: true,
+    topic: "RATES_CENTRAL_BANKS" as MarketTopic,
+  })
+  
+  events.push({
+    id: "mock-3",
+    title: "US Jobs Report (Nonfarm Payrolls)",
+    time: formatTime(dayAfter, 8, 30),
+    date: formatDateLabel(dayAfter),
+    dateKey: dayAfter.toISOString().split("T")[0],
+    type: "economic" as const,
+    importance: "high" as const,
+    currency: "USD",
+    isUS: true,
+    topic: "INFLATION_MACRO" as MarketTopic,
+    forecast: "200K",
+  })
+  
+  return events
 }
 
 

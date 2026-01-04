@@ -37,8 +37,8 @@ export function SocialSentiment() {
     }
 
     fetchSentiment()
-    // Refresh every 5 minutes
-    const interval = setInterval(fetchSentiment, 300000)
+    // Refresh every 6 minutes (matches server cache - prevents unnecessary requests)
+    const interval = setInterval(fetchSentiment, 360000)
     return () => clearInterval(interval)
   }, [])
 
@@ -146,12 +146,6 @@ export function SocialSentiment() {
                         />
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                    <span>{item.messageCount} messages</span>
-                    {item.watchlistCount > 0 && (
-                      <span>{item.watchlistCount} watching</span>
-                    )}
                   </div>
                 </div>
               </div>

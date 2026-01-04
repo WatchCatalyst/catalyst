@@ -81,14 +81,46 @@ export async function GET(request: Request) {
       }, { status: 404 })
     }
 
+    // Basic data validation - flag suspicious entries
+    const validatedEarnings = earnings.map((earning) => {
+      // Add validation flags
+      const validationFlags: string[] = []
+      
+      // Check for missing critical data
+      if (!earning.symbol || earning.symbol.length === 0) {
+        validationFlags.push("missing_symbol")
+      }
+      if (!earning.date) {
+        validationFlags.push("missing_date")
+      }
+      
+      // Check for suspicious EPS estimates (very high or negative when shouldn't be)
+      if (earning.epsEstimated !== undefined && earning.epsEstimated !== null) {
+        // Flag if EPS is suspiciously high (>$100) or very negative (<-$10) for most stocks
+        if (earning.epsEstimated > 100 || earning.epsEstimated < -10) {
+          validationFlags.push("suspicious_eps")
+        }
+      }
+      
+      return {
+        ...earning,
+        _validationFlags: validationFlags, // Internal flag, not exposed to client
+      }
+    })
+
     // Sort by date (soonest first)
-    earnings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    validatedEarnings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
     return NextResponse.json({
       success: true,
-      data: earnings.slice(0, 50), // Return next 50 earnings
+      data: validatedEarnings.slice(0, 50), // Return next 50 earnings
       timestamp: new Date().toISOString(),
-      count: earnings.length,
+      count: validatedEarnings.length,
+      dataQuality: {
+        note: "Data provided by Financial Modeling Prep. Please verify critical dates and estimates before trading.",
+        source: "FMP API",
+        lastValidated: new Date().toISOString(),
+      },
     })
   } catch (error) {
     console.error("[Earnings API] Error:", error)

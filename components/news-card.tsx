@@ -3,6 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { use3DTilt } from "@/hooks/use-3d-tilt"
 import {
   TrendingUp,
   TrendingDown,
@@ -19,13 +20,13 @@ import { linkifyTickers } from "@/lib/ticker-detection"
 import { MarketImpactBadge } from "@/components/market-impact-badge"
 import { getTopicLabel, getTopicColor, type MarketTopic } from "@/lib/market-relevance-classifier"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { CatalystPlaybook } from "@/components/catalyst-playbook"
 
 type NewsCardProps = {
   news: NewsItem
   onBookmark?: (id: string) => void
   isBookmarked?: boolean
   isRelevantToPortfolio?: boolean
+  isHolding?: boolean
   compact?: boolean
 }
 
@@ -36,7 +37,9 @@ export function NewsCard({
   isRelevantToPortfolio,
   isHolding = false,
   compact = false,
-}: NewsCardProps) {
+  index = 0,
+}: NewsCardProps & { index?: number }) {
+  const card3DRef = use3DTilt({ maxRotation: 8, enabled: !compact })
   const getSentimentIcon = () => {
     switch (news.sentiment) {
       case "bullish":
@@ -106,6 +109,16 @@ export function NewsCard({
 
   const classification = (news as any).classification
 
+  // Get stagger class for animation delay (cycles 1-8)
+  const staggerClass = `stagger-${(index % 8) + 1}`
+  
+  // Get sentiment glow class
+  const sentimentGlow = news.sentiment === "bullish" 
+    ? "glow-bullish" 
+    : news.sentiment === "bearish" 
+      ? "glow-bearish" 
+      : ""
+
   const renderTopicBadges = () => {
     if (!classification || classification.topics.length === 0) return null
 
@@ -165,15 +178,15 @@ export function NewsCard({
     return (
       <Card
         id={`news-${news.id}`}
-        className={`hover:bg-white/5 transition-colors duration-200 bg-zinc-950/50 backdrop-blur-sm group border-l-4 ${
+        className={`animate-fade-in-up ${staggerClass} card-premium-hover hover:bg-gradient-to-r hover:from-white/5 hover:to-white/[0.02] transition-all duration-300 glass-premium group border-l-4 relative overflow-hidden ${
           isHolding
-            ? "border-l-yellow-500"
+            ? "border-l-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.2)]"
             : news.sentiment === "bullish"
-              ? "border-l-success"
+              ? "border-l-success shadow-[0_0_20px_rgba(34,197,94,0.15)]"
               : news.sentiment === "bearish"
-                ? "border-l-danger"
+                ? "border-l-danger shadow-[0_0_20px_rgba(239,68,68,0.15)]"
                 : "border-l-border"
-        } ${isHolding ? "ring-1 ring-yellow-500/20" : ""}`}
+        } ${isHolding ? "ring-1 ring-yellow-500/30" : ""} ${sentimentGlow}`}
       >
         <CardContent className="p-3 flex items-center gap-4">
           <div className="flex items-center gap-2 min-w-[100px]">
@@ -219,8 +232,6 @@ export function NewsCard({
           </div>
 
           <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <CatalystPlaybook item={news} type="news" />
-
             {onBookmark && (
               <Button
                 variant="ghost"
@@ -246,10 +257,11 @@ export function NewsCard({
 
   return (
     <Card
+      ref={card3DRef as any}
       id={`news-${news.id}`}
-      className={`hover:border-accent-bright/50 transition-all duration-200 bg-zinc-950/50 backdrop-blur-sm relative ${
-        isHolding ? "ring-2 ring-yellow-500/30 border-yellow-500/20" : isRelevantToPortfolio ? "ring-2 ring-accent-bright/30" : ""
-      }`}
+      className={`animate-fade-in-up ${staggerClass} card-premium-hover hover-3d hover:border-accent-bright/50 transition-all duration-300 glass-premium relative overflow-hidden backdrop-glow depth-shadow ${
+        isHolding ? "ring-2 ring-yellow-500/40 border-yellow-500/30 shadow-[0_0_30px_rgba(234,179,8,0.2)]" : isRelevantToPortfolio ? "ring-2 ring-accent-bright/40 shadow-[0_0_30px_rgba(34,211,238,0.15)]" : ""
+      } ${sentimentGlow}`}
     >
       <CardContent className="p-5">
         <div className="flex flex-col md:flex-row md:items-start gap-4">
@@ -259,7 +271,7 @@ export function NewsCard({
                 {isHolding && (
                   <Badge
                     variant="outline"
-                    className="mb-2 bg-yellow-500/10 text-yellow-600 border-yellow-500/30"
+                    className="mb-2 bg-yellow-500/10 text-yellow-400 border-yellow-500/40 badge-premium shadow-[0_0_10px_rgba(234,179,8,0.2)]"
                   >
                     💼 Holding
                   </Badge>
@@ -267,13 +279,13 @@ export function NewsCard({
                 {isRelevantToPortfolio && !isHolding && (
                   <Badge
                     variant="outline"
-                    className="mb-2 bg-accent-bright/10 text-accent-bright border-accent-bright/30"
+                    className="mb-2 bg-accent-bright/10 text-accent-bright border-accent-bright/40 badge-premium shadow-[0_0_10px_rgba(34,211,238,0.2)]"
                   >
                     <Star className="h-3 w-3 mr-1 fill-accent-bright" />
                     Relevant to Your Portfolio
                   </Badge>
                 )}
-                <h3 className="text-lg font-semibold text-foreground leading-tight text-balance">
+                <h3 className="text-lg font-semibold text-foreground leading-tight text-balance group-hover:text-white transition-colors">
                   {linkifyTickers(news.title)}
                 </h3>
               </div>
@@ -320,12 +332,13 @@ export function NewsCard({
           </div>
 
           <div className="md:w-64 flex-shrink-0 space-y-3">
-            <CatalystPlaybook item={news} type="news" />
-
             {news.tradingSignal && (
-              <div className="p-3 rounded-lg bg-accent-bright/10 border border-accent-bright/20">
-                <div className="text-xs font-medium text-muted-foreground mb-1">Trading Signal</div>
-                <div className="text-sm font-semibold text-accent-bright">{news.tradingSignal}</div>
+              <div className="p-3 rounded-lg bg-gradient-to-br from-accent-bright/10 to-accent-bright/5 border border-accent-bright/30 backdrop-glow relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-accent-bright/0 via-accent-bright/10 to-accent-bright/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative">
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Trading Signal</div>
+                  <div className="text-sm font-semibold text-accent-bright text-glow-cyan">{news.tradingSignal}</div>
+                </div>
               </div>
             )}
 
@@ -334,10 +347,10 @@ export function NewsCard({
                 href={news.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-accent-bright transition-colors py-2 border border-border rounded-md hover:bg-accent/5"
+                className="flex-1 flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-accent-bright transition-all py-2 border border-border rounded-md hover:bg-gradient-to-r hover:from-accent-bright/10 hover:to-cyan-500/10 hover:border-accent-bright/50 hover:scale-105 hover:shadow-lg hover:shadow-accent-bright/20"
               >
                 Read full
-                <ExternalLink className="h-3 w-3" />
+                <ExternalLink className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </a>
             </div>
           </div>

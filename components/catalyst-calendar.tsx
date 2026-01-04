@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { Calendar, ExternalLink, Loader2 } from "lucide-react"
 import { getCalendarEvents } from "@/app/actions/get-calendar-events"
-import { CatalystPlaybook } from "@/components/catalyst-playbook"
 import { getMockUpcomingEvents, mapEventToTopic } from "@/lib/calendar-service"
 
 type EventType = "economic" | "crypto"
@@ -54,18 +53,117 @@ export function CatalystCalendar() {
   useEffect(() => {
     async function fetchEvents() {
       try {
-        const data = await getCalendarEvents()
+        // Fetch both economic calendar events and earnings
+        const [economicEvents, earningsResponse] = await Promise.all([
+          getCalendarEvents(),
+          fetch("/api/earnings?limit=10").catch(() => ({ json: () => ({ success: false, data: [] }) }))
+        ])
+        
+        const earningsData = await earningsResponse.json()
+        const earnings = earningsData.success ? earningsData.data || [] : []
+        
+        // Convert earnings to calendar event format
+        const earningsEvents: CalendarEvent[] = earnings.map((earning: any) => {
+          const [year, month, day] = earning.date.split('-').map(Number)
+          const eventDate = new Date(year, month - 1, day)
+          const today = new Date()
+          const tomorrow = new Date(today)
+          tomorrow.setDate(tomorrow.getDate() + 1)
+          
+          const todayStr = today.toISOString().split("T")[0]
+          const tomorrowStr = tomorrow.toISOString().split("T")[0]
+          const dateStr = earning.date
+          
+          let displayDate = "Today"
+          if (dateStr === tomorrowStr) {
+            displayDate = "Tomorrow"
+          } else if (dateStr !== todayStr) {
+            displayDate = eventDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+          }
+          
+          const isAMC = earning.time?.toLowerCase().includes("amc") || earning.time?.toLowerCase().includes("after")
+          const timeString = isAMC ? "4:00 PM" : "8:30 AM" // Default times for earnings
+          
+          return {
+            id: `earnings-${earning.symbol}-${earning.date}`,
+            title: `${earning.symbol} Earnings`,
+            time: timeString,
+            date: displayDate,
+            dateKey: earning.date,
+            type: "economic" as const,
+            importance: "high" as const,
+            ticker: earning.symbol,
+            currency: "USD",
+            isUS: true,
+            topic: "EARNINGS_FINANCIALS",
+            forecast: earning.epsEstimated ? `EPS Est: $${earning.epsEstimated.toFixed(2)}` : undefined,
+          }
+        })
+        
+        // Combine economic events with earnings
+        const allEvents = [...(economicEvents || []), ...earningsEvents]
+        
         // @ts-ignore - type mismatch on strict string literals vs string is fine for now
-        if (data && data.length > 0) {
+        if (allEvents && allEvents.length > 0) {
+          // Get current date/time in EST for filtering
+          const nowEST = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }))
+          const todayEST = new Date(nowEST.getFullYear(), nowEST.getMonth(), nowEST.getDate())
+          const currentHourEST = nowEST.getHours()
+          
+          // Filter out past events and events that already occurred
+          const futureEvents = allEvents.filter((event) => {
+            // ONLY US events
+            if (!event.isUS && event.currency !== "USD") {
+              return false
+            }
+            
+            // Skip events with actual values (already occurred)
+            if (event.actual) return false
+            
+            // Parse date from dateKey or date string
+            const dateStr = event.dateKey || event.date
+            if (!dateStr) return false
+            
+            // Handle "Today" and "Tomorrow" labels - but check if today's time has passed
+            if (dateStr === "Today") {
+              // If it's past 12 PM EST, don't show today's events
+              return currentHourEST < 12
+            }
+            if (dateStr === "Tomorrow") {
+              return true
+            }
+            
+            // Parse YYYY-MM-DD format
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+              const [year, month, day] = dateStr.split('-').map(Number)
+              const eventDate = new Date(year, month - 1, day)
+              const eventDateEST = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate())
+              
+              // Only include today and future dates
+              if (eventDateEST < todayEST) {
+                return false
+              }
+              
+              // If event is today and it's past 12 PM EST, exclude it
+              if (eventDateEST.getTime() === todayEST.getTime() && currentHourEST >= 12) {
+                return false
+              }
+              
+              return true
+            }
+            
+            return true // Keep if we can't parse (shouldn't happen)
+          })
+          
           // Map events to topics and ensure all have topics
-          const eventsWithTopics = data.map((event) => ({
+          const eventsWithTopics = futureEvents.map((event) => ({
             ...event,
             topic: event.topic || mapEventToTopic(event.title),
           }))
           // @ts-ignore
           setEvents(eventsWithTopics)
         } else {
-          // If no data from API, use mock events
+          // If no data from API, use mock events (but no fake earnings)
           setEvents(getMockUpcomingEvents())
         }
       } catch (error) {
@@ -140,13 +238,13 @@ export function CatalystCalendar() {
   })
 
   return (
-    <div className="bg-card/50 rounded-lg border border-border overflow-hidden mb-6">
-      <div className="p-4 border-b border-border flex items-center justify-between">
+    <div className="glass-premium rounded-lg border border-white/10 overflow-hidden mb-6 backdrop-glow">
+      <div className="p-4 border-b border-border/50 flex items-center justify-between bg-gradient-to-r from-zinc-900/30 to-transparent">
         <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-accent-bright" />
-          <h3 className="font-semibold text-sm">Catalyst Calendar</h3>
+          <Calendar className="h-4 w-4 text-cyan-400" />
+          <h3 className="font-semibold text-sm gradient-text-cyan">Catalyst Calendar</h3>
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">EST</span>
+        <span className="text-[10px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-white/10">EST</span>
       </div>
 
       <div className="max-h-[300px] overflow-y-auto custom-scrollbar min-h-[100px]">
@@ -171,76 +269,67 @@ export function CatalystCalendar() {
                   </div>
                 )}
                 {dayEvents.map((event) => (
-                  <CatalystPlaybook
+                  <div
                     key={event.id}
-                    item={event}
-                    type="calendar"
-                    trigger={
-                      <div
-                        className={`p-3 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors cursor-pointer ${
-                          event.importance === "high" ? "bg-red-500/5 hover:bg-red-500/10" : ""
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3 mb-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-mono text-muted-foreground">{event.time}</span>
-                            {event.importance === "high" && (
-                              <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" title="High Impact" />
-                            )}
-                            {getMarketHoursBadge(event.marketHours)}
-                          </div>
-                          <div className="flex items-center gap-1.5">
-
-
-                            {event.type === "crypto" && event.ticker && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded border border-blue-500/20">
-                                {event.ticker}
-                              </span>
-                            )}
-                            {event.type === "economic" && event.currency && (
-                              <span
-                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                                  event.isUS
-                                    ? "bg-green-500/10 text-green-500 border-green-500/20"
-                                    : "bg-green-500/10 text-green-500 border-green-500/20"
-                                }`}
-                              >
-                                {event.currency}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <p className={`text-sm font-medium leading-snug mb-1.5 ${
-                          event.isUS ? "text-foreground" : "text-foreground"
-                        }`}>
-                          {event.title}
-                        </p>
-
-                        <div className="flex items-center justify-between">
-                          {event.forecast ? (
-                            <div className="flex gap-3 text-xs">
-                              <span className="text-muted-foreground">
-                                Fcst: <span className="text-foreground">{event.forecast}</span>
-                              </span>
-                              {event.actual && (
-                                <span className="text-muted-foreground">
-                                  Act: <span className="font-bold text-foreground">{event.actual}</span>
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            sortedDateKeys.length === 1 && (
-                              <div className="text-xs text-muted-foreground capitalize">{displayDate}</div>
-                            )
-                          )}
-                          <span className="text-xs text-accent-bright opacity-70">
-                            View Playbook →
-                          </span>
-                        </div>
+                    className={`p-3 border-b border-border/30 last:border-0 hover:bg-gradient-to-r hover:from-white/5 hover:to-transparent transition-all cursor-pointer card-premium-hover ${
+                      event.importance === "high" ? "bg-red-500/5 hover:bg-red-500/10 border-l-2 border-l-red-500/50" : ""
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-mono text-muted-foreground">{event.time}</span>
+                        {event.importance === "high" && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" title="High Impact" />
+                        )}
+                        {getMarketHoursBadge(event.marketHours)}
                       </div>
-                    }
-                  />
+                      <div className="flex items-center gap-1.5">
+
+
+                        {event.type === "crypto" && event.ticker && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded border border-blue-500/20">
+                            {event.ticker}
+                          </span>
+                        )}
+                        {event.type === "economic" && event.currency && (
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                              event.isUS
+                                ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                : "bg-green-500/10 text-green-500 border-green-500/20"
+                            }`}
+                          >
+                            {event.currency}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className={`text-sm font-medium leading-snug mb-1.5 ${
+                      event.isUS ? "text-foreground" : "text-foreground"
+                    }`}>
+                      {event.title}
+                    </p>
+
+                    <div className="flex items-center justify-between">
+                      {event.forecast ? (
+                        <div className="flex gap-3 text-xs">
+                          <span className="text-muted-foreground">
+                            Fcst: <span className="text-foreground">{event.forecast}</span>
+                          </span>
+                          {event.actual && (
+                            <span className="text-muted-foreground">
+                              Act: <span className="font-bold text-foreground">{event.actual}</span>
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        sortedDateKeys.length === 1 && (
+                          <div className="text-xs text-muted-foreground capitalize">{displayDate}</div>
+                        )
+                      )}
+                    </div>
+                  </div>
                 ))}
               </div>
             )
@@ -248,8 +337,12 @@ export function CatalystCalendar() {
         )}
       </div>
 
-      <div className="p-2 border-t border-border bg-muted/20 text-center">
-        {/* Changed button to an anchor tag pointing to a real calendar source so it actually works */}
+      <div className="p-2 border-t border-border bg-muted/20 space-y-2">
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded p-1.5 mb-1">
+          <p className="text-[10px] text-yellow-500/90 leading-tight">
+            <strong>Verify dates:</strong> Earnings dates may occasionally be incorrect. Always cross-check with official sources before trading.
+          </p>
+        </div>
         <a
           href="https://tradingeconomics.com/calendar"
           target="_blank"

@@ -113,15 +113,14 @@ export function PortfolioManager({ onPortfolioChange }: PortfolioManagerProps) {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2 bg-transparent relative">
-          <Briefcase className="h-4 w-4" />
-          <span className="hidden sm:inline">Portfolio</span>
+        <button className="px-3 py-1.5 text-xs font-semibold tracking-wide text-zinc-500 hover:text-white transition-colors relative">
+          PORTFOLIO
           {portfolio.length > 0 && (
-            <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-accent-bright text-black text-[10px]">
+            <span className="absolute -top-1 -right-2 h-4 w-4 flex items-center justify-center rounded-full bg-cyan-500 text-white text-[9px] font-bold">
               {portfolio.length}
-            </Badge>
+            </span>
           )}
-        </Button>
+        </button>
       </DialogTrigger>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>

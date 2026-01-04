@@ -38,8 +38,8 @@ export function CryptoPrices() {
     }
 
     fetchPrices()
-    // Refresh every 60 seconds
-    const interval = setInterval(fetchPrices, 60000)
+    // Refresh every 2 minutes (matches server cache - prevents unnecessary requests)
+    const interval = setInterval(fetchPrices, 120000)
     return () => clearInterval(interval)
   }, [])
 

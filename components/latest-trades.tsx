@@ -97,8 +97,39 @@ export function LatestTrades() {
             ))}
           </div>
         ) : displayTrades.length === 0 ? (
-          <div className="p-8 text-center text-xs text-muted-foreground">
-            No trades available at this time.
+          <div className="p-8 space-y-3">
+            <p className="text-xs text-center text-muted-foreground mb-3">
+              No trades available from API sources.
+            </p>
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded p-3">
+              <p className="text-xs font-semibold text-yellow-500 mb-2">Free Alternatives:</p>
+              <div className="space-y-1.5 text-xs text-muted-foreground">
+                <a 
+                  href="https://www.capitoltrades.com" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-accent-bright hover:underline"
+                >
+                  Capitol Trades → (Free Senate data)
+                </a>
+                <a 
+                  href="https://www.sec.gov/edgar/searchedgar/companysearch.html" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-accent-bright hover:underline"
+                >
+                  SEC EDGAR → (Free Insider filings)
+                </a>
+                <a 
+                  href="https://www.openinsider.com" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-accent-bright hover:underline"
+                >
+                  OpenInsider → (Free Insider trades)
+                </a>
+              </div>
+            </div>
           </div>
         ) : (
           displayTrades.map((trade, index) => {

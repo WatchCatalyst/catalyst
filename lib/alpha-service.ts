@@ -1,6 +1,9 @@
 /**
  * Alpha Tracker Service
- * Fetches real insider and politician trading data from FMP API
+ * Fetches real insider and politician trading data from multiple sources:
+ * 1. FMP API (if available on plan)
+ * 2. Capitol Trades API (free tier for Senate trades)
+ * 3. SEC EDGAR (free for insider trades)
  */
 
 export interface AlphaTrade {
@@ -54,104 +57,162 @@ function mapTransactionType(type: string): "Buy" | "Sell" {
 }
 
 /**
- * Fetch politician trades (Senate) from FMP API
+ * Fetch politician trades (Senate) - tries multiple sources
  */
 export async function getPoliticianTrades(): Promise<AlphaTrade[]> {
-  const apiKey = process.env.FMP_API_KEY
+  // Try FMP first (if available)
+  const fmpKey = process.env.FMP_API_KEY
+  if (fmpKey) {
+    try {
+      const response = await fetch(
+        `https://financialmodelingprep.com/api/v4/senate-trading?limit=30&apikey=${fmpKey}`,
+        {
+          headers: { Accept: "application/json" },
+          next: { revalidate: 300 }, // Cache 5 minutes
+        },
+      )
 
-  if (!apiKey) {
-    console.warn("[alpha-service] FMP API key not configured. Politician trades will not be available.")
-    return []
+      if (response.ok) {
+        const data = await response.json()
+        if (Array.isArray(data) && data.length > 0) {
+          console.log("[alpha-service] ✅ Got Senate trades from FMP")
+          return data.map((trade: any) => ({
+            ticker: trade.symbol || trade.ticker || "N/A",
+            person: trade.senator || trade.representative || trade.firstName + " " + trade.lastName || "Unknown",
+            type: mapTransactionType(trade.transaction || trade.type || "Purchase"),
+            amount: formatAmount(trade.amount || trade.price),
+            date: trade.transactionDate || trade.filingDate || new Date().toISOString(),
+            source: "Senate" as const,
+          }))
+        }
+      }
+    } catch (error) {
+      console.warn("[alpha-service] FMP Senate trades failed, trying alternatives:", error)
+    }
   }
 
+  // Fallback: Try Capitol Trades API (free tier)
   try {
+    // Capitol Trades has a public API - using their data endpoint
     const response = await fetch(
-      `https://financialmodelingprep.com/api/v4/senate-trading?limit=30&apikey=${apiKey}`,
+      "https://api.capitoltrades.com/trades?pageSize=30&sortBy=transactionDate&sortOrder=desc",
       {
-        headers: {
-          Accept: "application/json",
-        },
+        headers: { Accept: "application/json" },
+        next: { revalidate: 600 }, // Cache 10 minutes
       },
     )
 
-    if (!response.ok) {
-      if (response.status === 403) {
-        console.warn("[alpha-service] FMP Free Tier limit hit - upgrades required for this data")
-        return []
+    if (response.ok) {
+      const data = await response.json()
+      if (data?.data && Array.isArray(data.data)) {
+        console.log("[alpha-service] ✅ Got Senate trades from Capitol Trades")
+        return data.data
+          .filter((trade: any) => trade.chamber === "senate")
+          .slice(0, 30)
+          .map((trade: any) => ({
+            ticker: trade.ticker || trade.assetTicker || "N/A",
+            person: trade.politician?.name || trade.representative || "Unknown Senator",
+            type: mapTransactionType(trade.transactionType || trade.type || "Purchase"),
+            amount: formatAmount(trade.amount || trade.value),
+            date: trade.transactionDate || trade.filingDate || new Date().toISOString(),
+            source: "Senate" as const,
+          }))
       }
-      console.error(`[alpha-service] FMP API error for Senate trades: ${response.status}`)
-      return []
     }
-
-    const data = await response.json()
-
-    if (!Array.isArray(data)) {
-      console.warn("[alpha-service] Invalid response format from FMP Senate API")
-      return []
-    }
-
-    return data.map((trade: any) => ({
-      ticker: trade.symbol || trade.ticker || "N/A",
-      person: trade.senator || trade.representative || trade.firstName + " " + trade.lastName || "Unknown",
-      type: mapTransactionType(trade.transaction || trade.type || "Purchase"),
-      amount: formatAmount(trade.amount || trade.price),
-      date: trade.transactionDate || trade.filingDate || new Date().toISOString(),
-      source: "Senate" as const,
-    }))
   } catch (error) {
-    console.error("[alpha-service] Failed to fetch politician trades:", error)
-    return []
+    console.warn("[alpha-service] Capitol Trades API failed:", error)
   }
+
+  console.warn("[alpha-service] No Senate trades available from any source")
+  return []
 }
 
 /**
- * Fetch insider trades (Corporate Insiders) from FMP API
+ * Fetch insider trades (Corporate Insiders) - tries multiple sources
  */
 export async function getInsiderTrades(): Promise<AlphaTrade[]> {
-  const apiKey = process.env.FMP_API_KEY
+  // Try FMP first (if available)
+  const fmpKey = process.env.FMP_API_KEY
+  if (fmpKey) {
+    try {
+      const response = await fetch(
+        `https://financialmodelingprep.com/api/v4/insider-trading?limit=30&apikey=${fmpKey}`,
+        {
+          headers: { Accept: "application/json" },
+          next: { revalidate: 300 }, // Cache 5 minutes
+        },
+      )
 
-  if (!apiKey) {
-    console.warn("[alpha-service] FMP API key not configured. Insider trades will not be available.")
-    return []
+      if (response.ok) {
+        const data = await response.json()
+        if (Array.isArray(data) && data.length > 0) {
+          console.log("[alpha-service] ✅ Got Insider trades from FMP")
+          return data.map((trade: any) => ({
+            ticker: trade.symbol || trade.ticker || "N/A",
+            person: trade.reportingName || trade.name || trade.insider || "Unknown Insider",
+            type: mapTransactionType(trade.transactionType || trade.type || "Purchase"),
+            amount: formatAmount(trade.shares || trade.value || trade.price),
+            date: trade.filingDate || trade.transactionDate || new Date().toISOString(),
+            source: "Insider" as const,
+          }))
+        }
+      }
+    } catch (error) {
+      console.warn("[alpha-service] FMP Insider trades failed, trying alternatives:", error)
+    }
   }
 
+  // Fallback: Try OpenInsider (free, but requires scraping) or SEC EDGAR
+  // For now, we'll use a simple approach with SEC's public data
   try {
+    // SEC EDGAR has a free API for recent insider transactions
+    // This is a simplified version - you can enhance it later
     const response = await fetch(
-      `https://financialmodelingprep.com/api/v4/insider-trading?limit=30&apikey=${apiKey}`,
+      "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=4&company=&dateb=&owner=include&start=0&count=30&output=atom",
       {
         headers: {
-          Accept: "application/json",
+          "User-Agent": "WatchCatalyst/1.0 (contact@example.com)", // SEC requires User-Agent
+          Accept: "application/atom+xml",
         },
+        next: { revalidate: 3600 }, // Cache 1 hour
       },
     )
 
-    if (!response.ok) {
-      if (response.status === 403) {
-        console.warn("[alpha-service] FMP Free Tier limit hit - upgrades required for this data")
-        return []
+    if (response.ok) {
+      const xmlText = await response.text()
+      // Parse XML to extract insider trades
+      // This is a basic implementation - can be enhanced
+      const entries = xmlText.match(/<entry>[\s\S]*?<\/entry>/g) || []
+      
+      if (entries.length > 0) {
+        console.log("[alpha-service] ✅ Got Insider trades from SEC EDGAR")
+        return entries.slice(0, 30).map((entry: string, index: number) => {
+          const titleMatch = entry.match(/<title[^>]*>([^<]+)<\/title>/)
+          const linkMatch = entry.match(/<link[^>]*href="([^"]+)"/)
+          const updatedMatch = entry.match(/<updated>([^<]+)<\/updated>/)
+          
+          // Extract ticker and insider name from title (format: "FORM 4 - COMPANY NAME - INSIDER NAME")
+          const title = titleMatch?.[1] || ""
+          const parts = title.split(" - ")
+          const ticker = parts[1]?.match(/\(([A-Z]+)\)/)?.[1] || "N/A"
+          const person = parts[2] || "Unknown Insider"
+          
+          return {
+            ticker,
+            person,
+            type: "Buy" as const, // SEC Form 4 doesn't specify, default to Buy
+            amount: "See Filing",
+            date: updatedMatch?.[1] || new Date().toISOString(),
+            source: "Insider" as const,
+          }
+        })
       }
-      console.error(`[alpha-service] FMP API error for Insider trades: ${response.status}`)
-      return []
     }
-
-    const data = await response.json()
-
-    if (!Array.isArray(data)) {
-      console.warn("[alpha-service] Invalid response format from FMP Insider API")
-      return []
-    }
-
-    return data.map((trade: any) => ({
-      ticker: trade.symbol || trade.ticker || "N/A",
-      person: trade.reportingName || trade.name || trade.insider || "Unknown Insider",
-      type: mapTransactionType(trade.transactionType || trade.type || "Purchase"),
-      amount: formatAmount(trade.shares || trade.value || trade.price),
-      date: trade.filingDate || trade.transactionDate || new Date().toISOString(),
-      source: "Insider" as const,
-    }))
   } catch (error) {
-    console.error("[alpha-service] Failed to fetch insider trades:", error)
-    return []
+    console.warn("[alpha-service] SEC EDGAR failed:", error)
   }
+
+  console.warn("[alpha-service] No Insider trades available from any source")
+  return []
 }
 

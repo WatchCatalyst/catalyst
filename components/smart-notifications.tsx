@@ -42,6 +42,18 @@ export function SmartNotifications({ news, portfolio }: SmartNotificationsProps)
     } else {
       permissionRef.current = Notification.permission
     }
+
+    // Load previously seen article IDs from localStorage
+    const savedIds = localStorage.getItem("watchcatalyst-seen-articles")
+    if (savedIds) {
+      try {
+        const parsed = JSON.parse(savedIds)
+        seenArticleIdsRef.current = new Set(parsed)
+        console.log(`[SmartNotifications] Loaded ${parsed.length} previously seen articles`)
+      } catch (e) {
+        console.error("[SmartNotifications] Failed to parse seen articles:", e)
+      }
+    }
   }, [])
 
   // Watch news array for new articles
@@ -51,11 +63,14 @@ export function SmartNotifications({ news, portfolio }: SmartNotificationsProps)
     if (Notification.permission !== "granted") return
 
     // On first load, just populate the Set (DO NOT notify)
-    if (isInitialLoadRef.current) {
+    if (isInitialLoadRef.current || seenArticleIdsRef.current.size === 0) {
       news.forEach((article) => {
         seenArticleIdsRef.current.add(article.id)
       })
       isInitialLoadRef.current = false
+      // Save to localStorage
+      const idsToSave = Array.from(seenArticleIdsRef.current).slice(0, 200)
+      localStorage.setItem("watchcatalyst-seen-articles", JSON.stringify(idsToSave))
       console.log(`[SmartNotifications] Initial load: tracking ${seenArticleIdsRef.current.size} articles`)
       return
     }
@@ -63,10 +78,17 @@ export function SmartNotifications({ news, portfolio }: SmartNotificationsProps)
     // On subsequent updates, check for new articles
     const newArticles = news.filter((article) => !seenArticleIdsRef.current.has(article.id))
 
-    if (newArticles.length > 0) {
-      console.log(`[SmartNotifications] Found ${newArticles.length} new article(s)`)
+    // Only notify if there are ACTUALLY new articles (not all articles are new)
+    // And only notify for articles in the top 10 (recent articles)
+    const topNewArticles = newArticles.filter((article, index) => {
+      const articleIndex = news.findIndex(n => n.id === article.id)
+      return articleIndex < 10 // Only notify for top 10 articles
+    })
 
-      newArticles.forEach((article) => {
+    if (topNewArticles.length > 0 && newArticles.length < news.length) {
+      console.log(`[SmartNotifications] Found ${topNewArticles.length} new article(s) in top 10`)
+
+      topNewArticles.forEach((article) => {
         // Mark as seen immediately to avoid duplicate notifications
         seenArticleIdsRef.current.add(article.id)
 
@@ -137,6 +159,13 @@ export function SmartNotifications({ news, portfolio }: SmartNotificationsProps)
           }
         }
       })
+
+      // Update seen IDs and save to localStorage
+      news.forEach((article) => {
+        seenArticleIdsRef.current.add(article.id)
+      })
+      const idsToSave = Array.from(seenArticleIdsRef.current).slice(0, 200)
+      localStorage.setItem("watchcatalyst-seen-articles", JSON.stringify(idsToSave))
     }
   }, [news, portfolio])
 

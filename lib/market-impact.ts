@@ -312,10 +312,12 @@ export function calculateMarketImpact(news: NewsItem, portfolioTickers?: string[
   let overlappingAssets: string[] = []
 
   if (portfolioTickers && portfolioTickers.length > 0) {
-    // Check if any portfolio tickers are mentioned
-    overlappingAssets = portfolioTickers.filter(
-      (ticker) => textLower.includes(ticker.toLowerCase()) || textLower.includes(`$${ticker.toLowerCase()}`),
-    )
+    // Check if any portfolio tickers are mentioned - use word boundaries to avoid substring matches
+    overlappingAssets = portfolioTickers.filter((ticker) => {
+      const tickerLower = ticker.toLowerCase()
+      const tickerRegex = new RegExp(`(\\$${tickerLower}|\\b${tickerLower}\\b)`, 'i')
+      return tickerRegex.test(textLower)
+    })
 
     // Also check for sector overlap
     const sectorKeywords: Record<string, string[]> = {

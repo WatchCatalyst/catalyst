@@ -36,10 +36,18 @@ export function SmartAlertsPanel({ news }: SmartAlertsPanelProps) {
     // Check alerts against current news
     if (alerts.length > 0 && news.length > 0) {
       const updatedAlerts = alerts.map(alert => {
-        const matches = news.filter(article => 
-          article.title.toLowerCase().includes(alert.keyword.toLowerCase()) ||
-          article.summary.toLowerCase().includes(alert.keyword.toLowerCase())
-        )
+        // Skip if alert keyword is missing
+        if (!alert.keyword) {
+          return alert
+        }
+        
+        const matches = news.filter(article => {
+          // Safely check title and summary with null/undefined guards
+          const title = article.title?.toLowerCase() || ""
+          const summary = article.summary?.toLowerCase() || ""
+          const keyword = alert.keyword?.toLowerCase() || ""
+          return keyword && (title.includes(keyword) || summary.includes(keyword))
+        })
         
         if (matches.length > 0 && !alert.triggered) {
           toast({

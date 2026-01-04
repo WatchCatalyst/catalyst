@@ -1,23 +1,66 @@
 /**
  * Clean US Market News Feed
- * Uses EODHD API with Supabase caching (1-minute TTL)
+ * Uses EODHD + FMP APIs with Supabase caching
  */
 
 import type { NewsItem } from "@/app/page"
 import { fetchEODHDNews } from "@/lib/eodhd-client"
-import { getCachedNews, setCachedNews } from "@/lib/news-cache"
+import { getCachedNews, setCachedNews, deleteCacheEntry } from "@/lib/news-cache"
 
-export async function getUSMarketNewsFeed(limit: number = 25, offset: number = 0): Promise<NewsItem[]> {
+// Simple hash function to generate deterministic IDs from strings
+function hashString(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32bit integer
+  }
+  // Convert to positive hex string
+  return 'art-' + Math.abs(hash).toString(16)
+}
+
+// Blacklist of article IDs to exclude (articles that are stuck or problematic)
+const BLACKLISTED_ARTICLE_IDS = new Set([
+  'art-19abdbd7', // Bitcoin (BTC) Price Prediction 2026 - stuck article
+])
+
+// FMP News fetcher as backup
+async function fetchFMPNews(apiKey: string, limit: number = 50): Promise<any[]> {
+  try {
+    // FMP stock news endpoint - usually more up-to-date
+    const url = `https://financialmodelingprep.com/api/v3/stock_news?limit=${limit}&apikey=${apiKey}`
+    console.log(`[FMP News] Fetching from: ${url.replace(apiKey, '***')}`)
+    
+    const response = await fetch(url, { cache: 'no-store' })
+    
+    if (!response.ok) {
+      console.error(`[FMP News] Error ${response.status}`)
+      return []
+    }
+    
+    const data = await response.json()
+    console.log(`[FMP News] Got ${Array.isArray(data) ? data.length : 0} articles`)
+    return Array.isArray(data) ? data : []
+  } catch (error) {
+    console.error("[FMP News] Failed:", error)
+    return []
+  }
+}
+
+export async function getUSMarketNewsFeed(limit: number = 25, offset: number = 0, bustCache: boolean = false): Promise<NewsItem[]> {
   const EODHD_KEY = process.env.EODHD_API_KEY
+  const FMP_KEY = process.env.FMP_API_KEY
 
   console.log("[US Feed] Starting feed fetch...", { 
     hasEODHDKey: !!EODHD_KEY,
+    hasFMPKey: !!FMP_KEY,
     limit,
-    offset
+    offset,
+    bustCache
   })
 
-  if (!EODHD_KEY) {
-    console.warn("[US Feed] EODHD API key not configured")
+  if (!EODHD_KEY && !FMP_KEY) {
+    console.warn("[US Feed] No news API keys configured")
     return []
   }
 
@@ -27,61 +70,126 @@ export async function getUSMarketNewsFeed(limit: number = 25, offset: number = 0
   const cacheTimeRange = "7d"
 
   try {
-    // Check Supabase cache first
-    const cached = await getCachedNews(cacheCategory, page, cacheTimeRange)
-    
-    if (cached && cached.articles.length > 0) {
-      console.log(`[US Feed] ✅ Cache hit! Returning ${cached.articles.length} cached articles`)
-      return cached.articles as NewsItem[]
+    // Check Supabase cache first (unless cache busting)
+    if (!bustCache) {
+      const cached = await getCachedNews(cacheCategory, page, cacheTimeRange)
+      
+      if (cached && cached.articles.length > 0) {
+        // Re-filter cached articles by date to remove stale ones
+        const currentTime = new Date()
+        const sevenDaysAgo = new Date(currentTime.getTime() - 7 * 24 * 60 * 60 * 1000)
+        const freshCachedArticles = cached.articles.filter((article: NewsItem) => {
+          try {
+            const articleDate = new Date(article.timestamp)
+            return articleDate >= sevenDaysAgo
+          } catch (e) {
+            return false // Exclude articles with invalid dates
+          }
+        })
+        
+        // Also filter blacklisted articles from cache
+        const filteredCached = freshCachedArticles.filter(article => !BLACKLISTED_ARTICLE_IDS.has(article.id))
+        
+        if (filteredCached.length > 0) {
+          console.log(`[US Feed] ✅ Cache hit! Returning ${filteredCached.length} fresh cached articles (filtered from ${cached.articles.length}, blacklist removed ${freshCachedArticles.length - filteredCached.length})`)
+          return filteredCached as NewsItem[]
+        } else {
+          console.log(`[US Feed] ⚠️ Cache hit but all articles are stale or blacklisted - deleting cache and fetching fresh data`)
+          // Delete the stale cache entry so it gets refreshed
+          await deleteCacheEntry(cacheCategory, page, cacheTimeRange)
+        }
+      }
+    } else {
+      console.log("[US Feed] 🔄 Cache bust requested - skipping cache")
     }
     
-    console.log("[US Feed] Cache miss - fetching fresh data from EODHD...")
+    console.log("[US Feed] Fetching fresh data...")
 
-    // Fetch news from EODHD with pagination support
-    const eodhdArticles = await fetchEODHDNews(
-      EODHD_KEY,
-      undefined, // No symbol filter - get all financial news
-      limit,
-      undefined, // No from date - get latest news
-      undefined, // No to date
-      offset
-    )
+    let eodhdArticles: any[] = []
     
-    console.log(`[US Feed] EODHD returned ${eodhdArticles.length} raw articles`)
+    // Only fetch from EODHD if key is available
+    if (EODHD_KEY) {
+      try {
+        // Fetch general news (no symbol filter, no date filter - let EODHD return latest)
+        eodhdArticles = await fetchEODHDNews(
+          EODHD_KEY,
+          undefined, // No symbols - general financial news
+          limit,
+          undefined, // No from date
+          undefined, // No to date
+          offset
+        )
+        console.log(`[US Feed] EODHD returned ${eodhdArticles.length} raw articles`)
+      } catch (eodhError) {
+        console.error("[US Feed] EODHD fetch failed:", eodhError)
+        // Continue to FMP even if EODHD fails
+      }
+    } else {
+      console.log("[US Feed] EODHD key not configured, skipping")
+    }
     
-    if (eodhdArticles.length === 0) {
-      console.warn(`[US Feed] EODHD returned 0 articles`)
+    // Also fetch from FMP as backup/supplement for fresher news
+    let fmpArticles: any[] = []
+    if (FMP_KEY) {
+      try {
+        fmpArticles = await fetchFMPNews(FMP_KEY, limit)
+        console.log(`[US Feed] FMP returned ${fmpArticles.length} articles`)
+      } catch (fmpError) {
+        console.error("[US Feed] FMP fetch failed:", fmpError)
+      }
+    } else {
+      console.log("[US Feed] FMP key not configured, skipping")
+    }
+    
+    // Combine both sources
+    const combinedRaw = [...eodhdArticles, ...fmpArticles]
+    console.log(`[US Feed] Combined total: ${combinedRaw.length} raw articles`)
+    
+    if (combinedRaw.length === 0) {
+      console.warn(`[US Feed] No articles from any source`)
       return []
     }
     
-    // Map EODHD articles to NewsItem format
-    console.log(`[US Feed] Mapping ${eodhdArticles.length} articles...`)
-    const articles: NewsItem[] = eodhdArticles.map((article: any) => {
-      const date = article.date || article.published_at || article.publishedDate || article.time || new Date().toISOString()
+    // Map all articles to NewsItem format (handles both EODHD and FMP formats)
+    console.log(`[US Feed] Mapping ${combinedRaw.length} articles...`)
+    const articles: NewsItem[] = combinedRaw.map((article: any) => {
+      // Handle both EODHD and FMP date formats
+      // Don't default to current time - if no date, use a very old date so it gets filtered out
+      const rawDate = article.date || article.publishedDate || article.published_at || article.time
+      const date = rawDate || new Date(0).toISOString() // Use epoch if no date (will be filtered out)
       const title = article.title || article.headline || "Untitled"
+      // FMP uses 'text', EODHD uses 'content'
       const content = article.content || article.text || article.description || article.summary || title
-      const link = article.link || article.url || article.source_url || "#"
+      // FMP uses 'url', EODHD uses 'link'
+      const link = article.url || article.link || article.source_url || "#"
       const symbols = article.symbols || []
       const symbol = Array.isArray(symbols) && symbols.length > 0 ? symbols[0] : (article.symbol || article.ticker)
       const tags = article.tags || article.tag || article.categories || ""
+      // FMP provides 'site' as source name
+      const sourceName = article.site || article.source || extractSource(link) || "News"
       
-      // Map EODHD sentiment if available
-      const eodhdSentiment = article.sentiment
+      // Map sentiment if available
+      const rawSentiment = article.sentiment
       let sentiment: "bullish" | "bearish" | "neutral" = "neutral"
-      if (eodhdSentiment) {
-        const sentLower = String(eodhdSentiment).toLowerCase()
+      if (rawSentiment) {
+        const sentLower = String(rawSentiment).toLowerCase()
         if (sentLower.includes('bull') || sentLower.includes('positive')) sentiment = "bullish"
         else if (sentLower.includes('bear') || sentLower.includes('negative')) sentiment = "bearish"
       }
       
+      // Generate DETERMINISTIC ID based on URL or title+date (NOT random!)
+      // This ensures same article = same ID across refreshes
+      const idSource = link !== "#" ? link : `${title}-${date}`
+      const stableId = hashString(idSource)
+      
       return {
-        id: `eodhd-${date}-${Math.random()}`,
+        id: stableId,
         title: title,
         summary: content,
-        category: mapCategory(tags),
+        category: mapCategory(tags || symbol),
         sentiment: sentiment,
         relevanceScore: symbol ? 85 : 70,
-        source: extractSource(link) || "EODHD",
+        source: sourceName,
         timestamp: date,
         url: link,
         keywords: extractKeywords(tags),
@@ -94,23 +202,49 @@ export async function getUSMarketNewsFeed(limit: number = 25, offset: number = 0
     let cleanedArticles = dedupeArticles(articles)
     cleanedArticles = sortByPublishedTime(cleanedArticles)
     
+    // Filter out blacklisted articles
+    const nonBlacklisted = cleanedArticles.filter(article => {
+      if (BLACKLISTED_ARTICLE_IDS.has(article.id)) {
+        console.log(`[US Feed] 🚫 Excluding blacklisted article: ${article.id} - "${article.title}"`)
+        return false
+      }
+      return true
+    })
+    
     // Filter to last 7 days
-    const now = new Date()
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    const filteredArticles = cleanedArticles.filter(article => {
+    const currentTime = new Date()
+    const sevenDaysAgo = new Date(currentTime.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const filteredArticles = nonBlacklisted.filter(article => {
       try {
         const articleDate = new Date(article.timestamp)
-        return articleDate >= sevenDaysAgo
+        // Exclude invalid dates (epoch or NaN)
+        if (isNaN(articleDate.getTime()) || articleDate.getTime() === 0) {
+          console.log(`[US Feed] Excluding article with invalid date: ${article.title}`)
+          return false
+        }
+        const isRecent = articleDate >= sevenDaysAgo
+        if (!isRecent) {
+          console.log(`[US Feed] Excluding stale article: ${article.title} (${articleDate.toISOString()})`)
+        } else {
+          // Log article details for debugging
+          const ageMs = currentTime.getTime() - articleDate.getTime()
+          const ageHours = Math.floor(ageMs / (1000 * 60 * 60))
+          if (ageHours < 1) {
+            console.log(`[US Feed] ⚠️ Article "${article.title}" (${article.id}) has timestamp ${articleDate.toISOString()} - showing as "Just now" but may be old`)
+          }
+        }
+        return isRecent
       } catch (e) {
-        return true // Include if date parsing fails
+        console.log(`[US Feed] Excluding article with date parse error: ${article.title}`, e)
+        return false // Exclude if date parsing fails
       }
     })
     
     console.log(`[US Feed] Final article count: ${filteredArticles.length} (after 7d filter)`)
     
-    // Store in Supabase cache (1-minute TTL)
+    // Store in Supabase cache (30-second TTL for real-time updates)
     if (filteredArticles.length > 0) {
-      await setCachedNews(cacheCategory, page, filteredArticles, cacheTimeRange, 60 * 1000)
+      await setCachedNews(cacheCategory, page, filteredArticles, cacheTimeRange, 30 * 1000)
     }
     
     return filteredArticles

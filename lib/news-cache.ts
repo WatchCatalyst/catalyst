@@ -7,8 +7,8 @@ export type CachedNewsResponse = {
   expires_at: string
 }
 
-// Cache TTL: 1 minute (60 seconds)
-const CACHE_TTL_MS = 60 * 1000
+// Cache TTL: 30 seconds for more real-time updates
+const CACHE_TTL_MS = 30 * 1000
 
 /**
  * Get cached news from Supabase
@@ -113,6 +113,40 @@ export async function setCachedNews(
     }
   } catch (error) {
     console.error("[Cache] Error in setCachedNews:", error)
+  }
+}
+
+/**
+ * Delete a specific cache entry
+ * Uses service role client for delete operations
+ */
+export async function deleteCacheEntry(
+  category: string,
+  page: number,
+  timeRange = "all",
+): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    
+    if (!supabase) {
+      console.warn("[Cache] No service client available - skipping cache delete")
+      return
+    }
+
+    const cacheKey = `${category}-${page}-${timeRange}`
+
+    const { error } = await supabase
+      .from("news_cache")
+      .delete()
+      .eq("cache_key", cacheKey)
+
+    if (error) {
+      console.error("[Cache] Error deleting cache entry:", error)
+    } else {
+      console.log("[Cache] Deleted stale cache entry:", cacheKey)
+    }
+  } catch (error) {
+    console.error("[Cache] Error in deleteCacheEntry:", error)
   }
 }
 

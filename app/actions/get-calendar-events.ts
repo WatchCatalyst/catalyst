@@ -231,27 +231,59 @@ export async function getCalendarEvents() {
           const data: FMPEvent[] = await response.json()
           console.log("[v0] FMP Data Received:", data?.length || 0, "events")
 
+          // Get current date/time in EST for proper filtering
+          const nowEST = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }))
+          const todayEST = new Date(nowEST.getFullYear(), nowEST.getMonth(), nowEST.getDate())
+          const currentHourEST = nowEST.getHours()
+          const currentMinuteEST = nowEST.getMinutes()
+          
           // Filter events within our date range since the stable endpoint returns all upcoming events
           const relevantEvents = data
             .filter((item) => {
-              const eventDate = new Date(item.date)
+              // Skip events that already have actual values (they've already occurred)
+              if (item.actual !== null && item.actual !== undefined) {
+                return false
+              }
+              
+              // Parse event date - FMP returns dates in YYYY-MM-DD format
+              const [year, month, day] = item.date.split('-').map(Number)
+              const eventDate = new Date(year, month - 1, day)
+              const eventDateEST = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate())
+              
+              // Only include events from today onwards (in EST)
+              if (eventDateEST < todayEST) {
+                return false
+              }
+              
+              // If event is today, check if time has passed
+              // Most US economic releases are at 8:30 AM or 10:00 AM EST
+              // If it's past 4:00 PM EST today, assume all today's events have passed
+              if (eventDateEST.getTime() === todayEST.getTime()) {
+                // If it's after 4 PM EST, exclude today's events (market close)
+                if (currentHourEST >= 16) {
+                  return false
+                }
+                // If it's after 12 PM EST, only include afternoon events (rare, but possible)
+                // Most economic data is released 8:30 AM - 10:00 AM, so if it's past noon, they're done
+                if (currentHourEST >= 12) {
+                  return false
+                }
+              }
+              
+              // Check if event is within our date range
               const fromDateObj = new Date(fromDate)
               const toDateObj = new Date(toDate)
               return eventDate >= fromDateObj && eventDate <= toDateObj
             })
             .filter((item) => {
-              // Always include US events (high or medium impact)
+              // ONLY US events - user requested US-only
               const isUS = item.country === "US" || item.currency === "USD"
-              if (isUS && (item.impact === "High" || item.impact === "Medium")) {
-                return true
+              if (!isUS) {
+                return false
               }
-
-              // Prioritize high impact events from other countries
-              if (item.impact === "High") return true
-
-              // Include medium impact events from major economies
-              const majorEconomies = ["EU", "CN", "GB", "JP", "CA", "AU"]
-              return item.impact === "Medium" && majorEconomies.includes(item.country)
+              
+              // Only high or medium impact US events
+              return item.impact === "High" || item.impact === "Medium"
             })
             .sort((a, b) => {
               // Prioritize US events first (always)
@@ -289,7 +321,12 @@ export async function getCalendarEvents() {
             const { mapEventToTopic } = await import("@/lib/calendar-service")
             
             const processedEvents = relevantEvents.map((event, index) => {
-              const eventDate = new Date(event.date)
+              // Parse date properly to avoid timezone issues
+              const [year, month, day] = event.date.split('-').map(Number)
+              const eventDate = new Date(year, month - 1, day)
+              
+              // For time, FMP doesn't provide time, so we'll use a default or extract from date if available
+              // Since FMP economic calendar doesn't include time, we'll set a default market hours time
               const timeString = eventDate.toLocaleTimeString("en-US", {
                 hour: "2-digit",
                 minute: "2-digit",

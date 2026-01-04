@@ -49,8 +49,10 @@ export function isPortfolioMatch(article: NewsItem, portfolio: PortfolioAsset[])
   for (const asset of portfolio) {
     const symbol = asset.symbol.toUpperCase()
 
-    // Direct ticker match (with $ prefix or standalone)
-    if (searchText.includes(`$${symbol}`) || searchText.includes(` ${symbol} `) || searchText.includes(` ${symbol},`)) {
+    // Direct ticker match (with $ prefix or standalone) - use word boundaries to avoid substring matches
+    // Match: $SOL, SOL (as word), SOL, or SOL, (with punctuation)
+    const tickerRegex = new RegExp(`(\\$${symbol}|\\b${symbol}\\b)`, 'i')
+    if (tickerRegex.test(searchText)) {
       return true
     }
 

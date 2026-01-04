@@ -59,7 +59,7 @@ export function SECFilings() {
       return "bg-orange-500/10 text-orange-400 border-orange-500/20"
     }
     if (formUpper === "4") {
-      return "bg-purple-500/10 text-purple-400 border-purple-500/20"
+      return "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
     }
     return "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
   }
@@ -82,23 +82,9 @@ export function SECFilings() {
     )
   }
 
+  // Don't render anything if no filings available (plan doesn't support it)
   if (filings.length === 0) {
-    return (
-      <Card className="glass-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <FileText className="h-5 w-5" />
-            Recent SEC Filings
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AlertCircle className="h-4 w-4" />
-            <p>No filings available. Check if FMP SEC filings endpoint is accessible on your plan.</p>
-          </div>
-        </CardContent>
-      </Card>
-    )
+    return null
   }
 
   return (

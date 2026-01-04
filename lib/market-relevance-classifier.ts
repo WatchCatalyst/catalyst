@@ -1,4 +1,3 @@
-import { generateObject } from "ai"
 import { z } from "zod"
 
 export type MarketTopic =
@@ -457,9 +456,9 @@ export function getTopicLabel(topic: MarketTopic): string {
 export function getTopicColor(topic: MarketTopic): { bg: string; text: string; border: string } {
   const colors: Record<MarketTopic, { bg: string; text: string; border: string }> = {
     RATES_CENTRAL_BANKS: {
-      bg: "bg-purple-500/10",
-      text: "text-purple-500",
-      border: "border-purple-500/30",
+      bg: "bg-cyan-500/10",
+      text: "text-cyan-500",
+      border: "border-cyan-500/30",
     },
     INFLATION_MACRO: {
       bg: "bg-orange-500/10",
@@ -591,47 +590,19 @@ ${input.content ? `Content: ${input.content.substring(0, 500)}` : ""}
 
 Return the classification result. If it's local fluff or won't move global markets, return isRelevant=false, score=0, and empty topics array.`
 
-  try {
-    const { object } = await generateObject({
-      model: "openai/gpt-4o-mini",
-      schema: ClassificationSchema,
-      prompt,
-      temperature: 0.3, // Lower temperature for more consistent classification
-      maxTokens: 500,
-    })
+  // Use keyword-based classification (AI removed)
+  const fallback = classifyArticleForMarkets({
+    title: input.title,
+    summary: input.description || input.content || "",
+  })
 
-    // Ensure consistency: if isRelevant is false, score should be 0 and topics empty
-    const isRelevant = object.isRelevant
-    const score = isRelevant ? object.score : 0
-    const topics = isRelevant ? (object.topics as MarketTopic[]) : []
-    const reasons = isRelevant ? object.reasons : ["Filtered out as local/noise/low-impact news"]
-
-    const result: ClassificationResult = {
-      isRelevant,
-      topics,
-      score,
-      reasons,
-      tradingSignal: object.tradingSignal,
-    }
-
-    return result
-  } catch (error) {
-    console.error("[classifyArticle] LLM classification failed, using keyword fallback:", error)
-    
-    // Fallback to keyword-based classification if LLM fails
-    const fallback = classifyArticleForMarkets({
-      title: input.title,
-      summary: input.description || input.content || "",
-    })
-
-    const fallbackResult: ClassificationResult = {
-      isRelevant: fallback.isRelevant,
-      topics: fallback.topics,
-      score: fallback.score,
-      reasons: fallback.reasons,
-      tradingSignal: fallback.score >= 70 ? "Buy" : fallback.score <= 30 ? "Sell" : "Hold/Watch",
-    }
-
-    return fallbackResult
+  const fallbackResult: ClassificationResult = {
+    isRelevant: fallback.isRelevant,
+    topics: fallback.topics,
+    score: fallback.score,
+    reasons: fallback.reasons,
+    tradingSignal: fallback.score >= 70 ? "Buy" : fallback.score <= 30 ? "Sell" : "Hold/Watch",
   }
+
+  return fallbackResult
 }

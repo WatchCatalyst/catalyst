@@ -17,9 +17,9 @@ export const categoryColors: Record<NewsCategory, { bg: string; text: string; bo
     border: "border-blue-500/20",
   },
   technology: {
-    bg: "bg-purple-500/10",
-    text: "text-purple-500",
-    border: "border-purple-500/20",
+    bg: "bg-cyan-500/10",
+    text: "text-cyan-500",
+    border: "border-cyan-500/20",
   },
   war: {
     bg: "bg-red-500/10",

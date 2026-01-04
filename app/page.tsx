@@ -7,33 +7,28 @@ import { TrendingTopics } from "@/components/trending-topics"
 import { ArticleDetailModal } from "@/components/article-detail-modal"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { SmartAlertsPanel } from "@/components/smart-alerts-panel"
-import { MarketOverview } from "@/components/market-overview"
-import { RefreshCw, Bell, BellOff, LayoutGrid, List, Star, Radio, Pause, RotateCcw } from "lucide-react"
+import { RefreshCw, LayoutGrid, List } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { newsClient } from "@/lib/news-client"
 import { useToast } from "@/hooks/use-toast"
 import useSWRInfinite from "swr/infinite"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
 import { detectTickers } from "@/lib/ticker-detection"
 import Image from "next/image"
 import { CatalystCalendar } from "@/components/catalyst-calendar"
 import { WatchlistSidebar } from "@/components/watchlist-sidebar"
-import type { MarketTopic } from "@/lib/market-relevance-classifier"
-import { SystemHealth } from "@/components/system-health"
 import { NewsCardSkeleton } from "@/components/news-card-skeleton"
 import { PortfolioManager } from "@/components/portfolio-manager"
 import { PriceAlertsManager } from "@/components/price-alerts-manager"
 import { CongressTracker } from "@/components/congress-tracker"
+import { GovContractsTracker } from "@/components/gov-contracts-tracker"
 import { LatestTrades } from "@/components/latest-trades"
-import { Badge } from "@/components/ui/badge"
 import { SmartNotifications } from "@/components/smart-notifications"
 import { ContextChart } from "@/components/context-chart"
 import { EarningsCalendar } from "@/components/earnings-calendar"
 import { SECFilings } from "@/components/sec-filings"
-import { AnalystRatings } from "@/components/analyst-ratings"
 import { CryptoPrices } from "@/components/crypto-prices"
 import { SocialSentiment } from "@/components/social-sentiment"
+import { ScrollReveal } from "@/components/scroll-reveal"
+import { MagneticButton } from "@/components/magnetic-button"
 
 export type NewsCategoryType = "all" | "crypto" | "stocks" | "war" | "technology" | "politics" | "animals" | "sports"
 
@@ -117,8 +112,16 @@ export default function Home() {
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date())
   const [isRefreshing, setIsRefreshing] = useState(false) // Track background refresh state
   const [newArticleCount, setNewArticleCount] = useState(0)
+  const [isPaginationLoad, setIsPaginationLoad] = useState(false) // Track pagination vs refresh
+  const previousSizeRef = useRef<number>(1) // Track previous page size
   const [minRelevanceScore, setMinRelevanceScore] = useState(60)
   const [selectedTopics, setSelectedTopics] = useState<string[]>([])
+  const [headerPrices, setHeaderPrices] = useState<{
+    SOL: { price: number; change: number } | null
+    BTC: { price: number; change: number } | null
+    ETH: { price: number; change: number } | null
+  }>({ SOL: null, BTC: null, ETH: null })
+  const [logoErrors, setLogoErrors] = useState<{ [key: string]: boolean }>({})
 
   const loadPreferences = () => {
     const savedPrefs = localStorage.getItem("watchcatalyst-preferences")
@@ -204,8 +207,18 @@ export default function Home() {
   }, [])
 
   const fetchPage = async (url: string) => {
-    // Fetch from the API endpoint (url includes pagination params like ?limit=25&offset=0)
-    const response = await fetch(url)
+    // Add cache-busting timestamp to force fresh data
+    const bustParam = `bust=${Date.now()}`
+    const separator = url.includes('?') ? '&' : '?'
+    const fullUrl = `${url}${separator}${bustParam}`
+    
+    const response = await fetch(fullUrl, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+      },
+    })
     const result = await response.json()
     return result.data || []
   }
@@ -221,9 +234,11 @@ export default function Home() {
     (pageIndex, previousPageData) => getKey(pageIndex, previousPageData, selectedCategory),
     fetchPage,
     {
-      revalidateFirstPage: false,
+      revalidateFirstPage: true,  // Always get fresh first page
       revalidateOnFocus: false,
-      revalidateOnReconnect: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 0,        // Don't dedupe - always fetch
+      refreshInterval: 0,         // Manual refresh only
     },
   )
 
@@ -259,27 +274,84 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
 
+  // Load previously seen article IDs from localStorage on mount
   useEffect(() => {
-    if (news.length > 0 && previousNewsIdsRef.current.size > 0 && autoRefresh) {
-      const newItems = news.filter((item: NewsItem) => !previousNewsIdsRef.current.has(item.id))
+    const savedIds = localStorage.getItem("watchcatalyst-seen-articles")
+    if (savedIds) {
+      try {
+        const parsed = JSON.parse(savedIds)
+        previousNewsIdsRef.current = new Set(parsed)
+      } catch (e) {
+        console.error("Failed to parse seen articles:", e)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (news.length === 0) return
+    
+    // Check if this is pagination (size increased) vs refresh
+    const isPagination = size > previousSizeRef.current
+    previousSizeRef.current = size
+    
+    // Load seen IDs from localStorage if empty
+    if (previousNewsIdsRef.current.size === 0) {
+      const savedIds = localStorage.getItem("watchcatalyst-seen-articles")
+      if (savedIds) {
+        try {
+          const parsed = JSON.parse(savedIds)
+          previousNewsIdsRef.current = new Set(parsed)
+        } catch (e) {
+          console.error("Failed to parse seen articles:", e)
+        }
+      }
+    }
+
+    // On first load with no previous IDs, just save current IDs (don't notify)
+    if (previousNewsIdsRef.current.size === 0) {
+      const currentIds = news.map((item: NewsItem) => item.id)
+      previousNewsIdsRef.current = new Set(currentIds)
+      localStorage.setItem("watchcatalyst-seen-articles", JSON.stringify(currentIds))
+      return
+    }
+
+    // Skip notifications for pagination (Load More) - only notify on refresh
+    if (isPagination || isPaginationLoad) {
+      // Just update the seen IDs without notifying
+      const allIds = news.map((item: NewsItem) => item.id)
+      previousNewsIdsRef.current = new Set(allIds)
+      const idsToSave = allIds.slice(0, 200)
+      localStorage.setItem("watchcatalyst-seen-articles", JSON.stringify(idsToSave))
+      setIsPaginationLoad(false)
+      return
+    }
+
+    const newItems = news.filter((item: NewsItem) => !previousNewsIdsRef.current.has(item.id))
+
+    // Only notify if:
+    // 1. There are new items
+    // 2. NOT all items are new (meaning we have existing + new, not a full refresh)
+    // 3. New items are at the TOP (first few articles)
+    const topNewItems = newItems.filter((item, index) => {
+      const itemIndex = news.findIndex(n => n.id === item.id)
+      return itemIndex < 5 // Only notify if new items are in top 5
+    })
+
+    if (topNewItems.length > 0 && newItems.length < news.length) {
+      setNewArticleCount(topNewItems.length)
+      setLastUpdateTime(new Date())
 
       const prefs = localStorage.getItem("watchcatalyst-preferences")
       let shouldNotify = true
-
       if (prefs) {
         const parsed = JSON.parse(prefs)
         if (!parsed.enabled) shouldNotify = false
       }
 
-      if (newItems.length > 0) {
-        setNewArticleCount(newItems.length)
-        setLastUpdateTime(new Date())
-      }
-
-      if (newItems.length > 0 && shouldNotify) {
-        const firstNewItem = newItems[0]
+      if (shouldNotify) {
+        const firstNewItem = topNewItems[0]
         toast({
-          title: `${newItems.length} New ${newItems.length === 1 ? "Article" : "Articles"}`,
+          title: `${topNewItems.length} New ${topNewItems.length === 1 ? "Article" : "Articles"}`,
           description: firstNewItem?.title || "Check the latest updates",
           action: (
             <button
@@ -302,10 +374,13 @@ export default function Home() {
       }
     }
 
-    if (news.length > 0) {
-      previousNewsIdsRef.current = new Set(news.map((item: NewsItem) => item.id))
-    }
-  }, [news, autoRefresh, toast])
+    // Update seen IDs
+    const allIds = news.map((item: NewsItem) => item.id)
+    previousNewsIdsRef.current = new Set(allIds)
+    // Keep only last 200 IDs to prevent localStorage from growing too large
+    const idsToSave = allIds.slice(0, 200)
+    localStorage.setItem("watchcatalyst-seen-articles", JSON.stringify(idsToSave))
+  }, [news, toast, size, isPaginationLoad])
 
   const handleRefresh = async (silent = false) => {
     if (!silent) {
@@ -363,7 +438,42 @@ export default function Home() {
     }
   }
 
-  // Auto-refresh polling: every 60 seconds when live
+  // Fetch header crypto prices
+  useEffect(() => {
+    async function fetchHeaderPrices() {
+      try {
+        const response = await fetch("/api/crypto/prices?symbols=SOL,BTC,ETH&limit=10")
+        const data = await response.json()
+        
+        if (data.success && data.data) {
+          const prices: Record<string, { price: number; change: number }> = {}
+          data.data.forEach((crypto: any) => {
+            if (crypto.symbol === 'SOL') {
+              prices.SOL = { price: crypto.price, change: crypto.changePercent24h }
+            } else if (crypto.symbol === 'BTC') {
+              prices.BTC = { price: crypto.price, change: crypto.changePercent24h }
+            } else if (crypto.symbol === 'ETH') {
+              prices.ETH = { price: crypto.price, change: crypto.changePercent24h }
+            }
+          })
+          setHeaderPrices(prev => ({
+            SOL: prices.SOL || prev.SOL,
+            BTC: prices.BTC || prev.BTC,
+            ETH: prices.ETH || prev.ETH,
+          }))
+        }
+      } catch (error) {
+        console.error("Failed to fetch header prices:", error)
+      }
+    }
+
+    fetchHeaderPrices()
+    // Update every 2 minutes (matches server cache - prevents unnecessary requests)
+    const interval = setInterval(fetchHeaderPrices, 120000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Auto-refresh polling: every 2 minutes when live (matches server cache)
   useEffect(() => {
     if (!isLive) return
 
@@ -375,7 +485,7 @@ export default function Home() {
       }).catch((error) => {
         console.error("Background refresh failed:", error)
       })
-    }, 60000) // 60 seconds
+    }, 120000) // 2 minutes (matches server cache - prevents unnecessary requests)
 
     return () => clearInterval(intervalId)
   }, [isLive, refreshNews])
@@ -386,7 +496,12 @@ export default function Home() {
     const text = `${article.title} ${article.summary}`.toUpperCase()
     const tickers = detectTickers(text)
 
-    return portfolio.some((asset) => text.includes(asset.symbol) || tickers.some((t) => t.symbol === asset.symbol))
+    // Use word boundaries to avoid matching symbols inside other words (e.g., "SOL" in "solution")
+    return portfolio.some((asset) => {
+      const symbol = asset.symbol.toUpperCase()
+      const symbolRegex = new RegExp(`(\\$${symbol}|\\b${symbol}\\b)`, 'i')
+      return symbolRegex.test(text) || tickers.some((t) => t.symbol === asset.symbol)
+    })
   }
 
   // Simplified: API handles all filtering via custom script
@@ -431,146 +546,234 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-transparent relative z-10">
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-black/50 backdrop-blur-md supports-[backdrop-filter]:bg-black/30">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between gap-4">
-            {/* First row: Branding and primary actions */}
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-shrink">
-              <div className="flex items-center gap-1.5 sm:gap-2">
+      {/* Top Announcement Bar */}
+      <div className="w-full bg-gradient-to-r from-black/90 via-zinc-950/90 to-black/90 backdrop-blur-md border-b border-white/5 py-1.5 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-600/0 via-cyan-600/5 to-cyan-600/0" />
+        <div className="relative flex items-center justify-center gap-2 text-xs">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50" />
+          <span className="text-zinc-500 tracking-wider">POWERED BY</span>
+          <span className="text-cyan-400 font-semibold tracking-wider gradient-text-cyan">WATCHCATALYST</span>
+          <span className="text-zinc-500 tracking-wider">TECHNOLOGY</span>
+          <span className="text-zinc-500 ml-1 animate-pulse">→</span>
+        </div>
+      </div>
+
+      {/* Main Header */}
+      <header className="sticky top-0 z-50 glass-header border-b border-white/5">
+        <div className="w-full px-4 lg:px-6">
+          <div className="flex items-center justify-between h-12">
+            {/* Left: Logo + Brand + Price Tickers */}
+            <div className="flex items-center gap-4">
+              {/* Logo */}
+              <div className="flex items-center gap-2">
                 <Image
                   src="/images/design-mode/41e2a965-c253-492a-8fe2-706b2c00606a.png"
                   alt="WatchCatalyst"
-                  width={32}
-                  height={32}
-                  className="rounded-lg sm:w-10 sm:h-10"
+                  width={24}
+                  height={24}
+                  className="rounded"
                 />
-                <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-foreground whitespace-nowrap">
-                  Watch<span className="text-accent-bright">Catalyst</span>
+                <h1 className="text-sm font-bold text-white whitespace-nowrap tracking-tight">
+                  WATCH<span className="gradient-text-cyan text-glow-cyan">CATALYST</span>
                 </h1>
               </div>
+              
+              {/* Divider */}
+              <div className="hidden lg:block h-4 w-px bg-white/20" />
+              
+              {/* Live Price Tickers - Matching Reference Style */}
+              <div className="hidden lg:flex items-center gap-5">
+                {/* Solana */}
+                {headerPrices.SOL && (
+                  <div className="flex items-center gap-2">
+                    {logoErrors.solana ? (
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#9945FF] to-[#14F195] flex items-center justify-center">
+                        <span className="text-white text-[10px] font-bold">S</span>
+                      </div>
+                    ) : (
+                      <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white">
+                        <Image
+                          src="/images/crypto-logos/solana.png"
+                          alt="Solana"
+                          width={20}
+                          height={20}
+                          className="w-full h-full object-contain"
+                          onError={() => setLogoErrors(prev => ({ ...prev, solana: true }))}
+                        />
+                      </div>
+                    )}
+                    <span className="text-white font-mono text-sm">
+                      ${headerPrices.SOL.price >= 1000 
+                        ? `${(headerPrices.SOL.price / 1000).toFixed(2)}K` 
+                        : headerPrices.SOL.price.toFixed(2)}
+                    </span>
+                    <span className={`font-mono text-xs ${headerPrices.SOL.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {headerPrices.SOL.change >= 0 ? '+' : ''}{headerPrices.SOL.change.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                
+                {/* Bitcoin */}
+                {headerPrices.BTC && (
+                  <div className="flex items-center gap-2">
+                    {logoErrors.bitcoin ? (
+                      <div className="w-5 h-5 rounded-full bg-[#F7931A] flex items-center justify-center">
+                        <span className="text-white text-[10px] font-bold">₿</span>
+                      </div>
+                    ) : (
+                      <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white">
+                        <Image
+                          src="/images/crypto-logos/bitcoin.png"
+                          alt="Bitcoin"
+                          width={20}
+                          height={20}
+                          className="w-full h-full object-contain"
+                          onError={() => setLogoErrors(prev => ({ ...prev, bitcoin: true }))}
+                        />
+                      </div>
+                    )}
+                    <span className="text-white font-mono text-sm">
+                      ${headerPrices.BTC.price >= 1000 
+                        ? `${(headerPrices.BTC.price / 1000).toFixed(1)}K` 
+                        : headerPrices.BTC.price.toFixed(2)}
+                    </span>
+                    <span className={`font-mono text-xs ${headerPrices.BTC.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {headerPrices.BTC.change >= 0 ? '+' : ''}{headerPrices.BTC.change.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                
+                {/* Ethereum */}
+                {headerPrices.ETH && (
+                  <div className="flex items-center gap-2">
+                    {logoErrors.ethereum ? (
+                      <div className="w-5 h-5 rounded-full bg-[#627EEA] flex items-center justify-center">
+                        <span className="text-white text-[10px] font-bold">Ξ</span>
+                      </div>
+                    ) : (
+                      <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white">
+                        <Image
+                          src="/images/crypto-logos/ethereum.png"
+                          alt="Ethereum"
+                          width={20}
+                          height={20}
+                          className="w-full h-full object-contain"
+                          onError={() => setLogoErrors(prev => ({ ...prev, ethereum: true }))}
+                        />
+                      </div>
+                    )}
+                    <span className="text-white font-mono text-sm">
+                      ${headerPrices.ETH.price >= 1000 
+                        ? `${(headerPrices.ETH.price / 1000).toFixed(1)}K` 
+                        : headerPrices.ETH.price.toFixed(0)}
+                    </span>
+                    <span className={`font-mono text-xs ${headerPrices.ETH.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {headerPrices.ETH.change >= 0 ? '+' : ''}{headerPrices.ETH.change.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Navigation + Actions */}
+            <div className="flex items-center gap-1">
+              {/* Live Toggle - Styled like reference */}
+              <button 
+                onClick={() => handleLiveToggle(!isLive)}
+                className={`px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all relative overflow-hidden ${
+                  isLive 
+                    ? "bg-cyan-600/20 text-cyan-400 border border-cyan-500/40 pulse-glow-cyan hover:bg-cyan-600/30" 
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+                }`}
+              >
+                {isLive && (
+                  <span className="absolute inset-0 bg-gradient-to-r from-cyan-600/0 via-cyan-600/20 to-cyan-600/0 animate-shimmer" />
+                )}
+                <span className="relative flex items-center gap-1.5">
+                  {isLive && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />}
+                  {isLive ? "LIVE" : "PAUSED"}
+                </span>
+              </button>
+
+              {/* Nav Links */}
+              <PriceAlertsManager portfolio={portfolio} />
+              <PortfolioManager onPortfolioChange={(assets) => setPortfolio(assets)} />
+              <SettingsDialog />
+
+              {/* Social Icons */}
               <a
                 href="https://x.com/WatchCatalyst"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:flex items-center gap-1.5 px-2 md:px-3 py-1.5 rounded-md bg-foreground/10 hover:bg-foreground/20 transition-colors group flex-shrink-0"
+                className="p-2 text-zinc-500 hover:text-white transition-colors"
+                title="Follow on X"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4 text-foreground group-hover:scale-110 transition-transform"
-                  fill="currentColor"
-                >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
-                <span className="hidden md:inline text-sm font-medium text-foreground">@WatchCatalyst</span>
               </a>
-              <div className="hidden lg:block h-6 w-px bg-border" />
-              <p className="hidden lg:block text-sm text-muted-foreground whitespace-nowrap">
-                Real-time news intelligence for traders
-              </p>
-            </div>
-
-            {/* Right side: Compact action buttons */}
-            <div className="flex items-center gap-2">
-              <PriceAlertsManager portfolio={portfolio} />
-              <PortfolioManager onPortfolioChange={(assets) => setPortfolio(assets)} />
-              <SettingsDialog />
-              <SystemHealth />
-
-              {/* Live toggle */}
-              <div className="flex items-center gap-1.5 sm:gap-2 border-l border-border pl-1.5 sm:pl-2">
-                {isLive ? (
-                  <Radio className="h-4 w-4 text-accent-bright fill-accent-bright" />
-                ) : (
-                  <Pause className="h-4 w-4 text-muted-foreground" />
-                )}
-                <Switch id="live-toggle" checked={isLive} onCheckedChange={handleLiveToggle} />
-                <Label htmlFor="live-toggle" className="text-sm cursor-pointer whitespace-nowrap hidden sm:inline">
-                  {isLive ? "🔴 Live" : "⏸ Paused"}
-                </Label>
-              </div>
-
-              {/* Last updated indicator */}
-              {isLive && (
-                <div className="hidden md:flex items-center text-xs text-muted-foreground">
-                  <LastUpdatedDisplay lastUpdateTime={lastUpdateTime} />
-                </div>
-              )}
-
-              {/* Reset button */}
-              <Button
-                onClick={() => {
-                  // Clear all filters and localStorage
-                  localStorage.removeItem("watchcatalyst-preferences")
-                  localStorage.removeItem("watchcatalyst-bookmarks")
-                  localStorage.removeItem("watchcatalyst-portfolio")
-                  localStorage.removeItem("watchcatalyst-alerts")
-                  // Reset state
-                  setSearchQuery("")
-                  setSelectedCategory("all")
-                  setShowWatchlistOnly(false)
-                  setSelectedTopics([])
-                  setMinRelevanceScore(0)
-                  // Refresh news
-                  handleRefresh(false)
-                  toast({
-                    title: "Reset to US defaults",
-                    description: "All filters cleared, showing US market feed",
-                  })
-                }}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 sm:gap-2 bg-transparent h-8 px-2 sm:px-3"
+              <a
+                href="https://github.com/WatchCatalyst/catalyst"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 text-zinc-500 hover:text-white transition-colors"
+                title="View on GitHub"
               >
-                <RotateCcw className="h-4 w-4" />
-                <span className="hidden sm:inline">Reset</span>
-              </Button>
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+              </a>
 
-              {/* Refresh button */}
-              <Button
+              {/* Cyan Action Button - Like "LAUNCH APP" in reference */}
+              <MagneticButton
                 onClick={() => handleRefresh(false)}
-                variant="outline"
-                size="sm"
                 disabled={isValidating || isRefreshing}
-                className="gap-1.5 sm:gap-2 bg-transparent relative h-8 px-2 sm:px-3"
+                className="bg-gradient-to-r from-cyan-600 to-cyan-700 hover:from-cyan-500 hover:to-cyan-600 text-white font-semibold px-5 h-8 text-xs tracking-wide rounded-md transition-all hover:shadow-lg hover:shadow-cyan-500/50 relative ml-2 hover:scale-105 btn-accent-glow ripple-effect"
+                magneticDistance={15}
               >
-                <RefreshCw className={`h-4 w-4 ${isValidating || isRefreshing ? "animate-spin" : ""}`} />
-                <span className="hidden sm:inline">Refresh</span>
+                <RefreshCw className={`h-3 w-3 mr-1.5 ${isValidating || isRefreshing ? "animate-spin" : ""}`} />
+                REFRESH
                 {newArticleCount > 0 && (
-                  <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-accent-bright text-black text-[10px] font-bold">
+                  <span className="absolute -top-1.5 -right-1.5 h-5 w-5 flex items-center justify-center rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 text-black text-[10px] font-bold shadow-lg shadow-emerald-500/50 animate-pulse pulse-ring">
                     {newArticleCount}
-                  </Badge>
+                  </span>
                 )}
-              </Button>
-              {isRefreshing && !isValidating && (
-                <span className="hidden lg:inline text-xs text-muted-foreground">Updating...</span>
-              )}
+              </MagneticButton>
             </div>
           </div>
+        </div>
 
-          {/* Second row: Search bar */}
+        {/* Search Bar Row */}
+        <div className="w-full px-4 lg:px-6 pb-3">
           <SearchBar value={searchQuery} onChange={setSearchQuery} />
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <main className="container mx-auto px-4 py-6 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 perspective-3d">
           {/* Main content area - news articles */}
           <div className="lg:col-span-3 space-y-4">
             {/* Context Chart - Only show when filtering by symbol */}
             {searchQuery && (
-              <ContextChart symbol={searchQuery} articles={filteredNews} />
+              <ScrollReveal>
+                <ContextChart symbol={searchQuery} articles={filteredNews} />
+              </ScrollReveal>
             )}
 
             {/* Search and View Controls */}
 
             {/* View Controls */}
-            <div className="flex items-center justify-between gap-4 pb-4 border-b border-border">
+            <div className="flex items-center justify-between gap-4 pb-4 border-b border-border/50">
               <div className="flex items-center gap-2">
                 <Button
                   variant={viewMode === "card" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setViewMode("card")}
-                  className="h-8 px-3"
+                  className={`h-8 px-3 transition-all hover:scale-105 ${
+                    viewMode === "card" 
+                      ? "bg-gradient-to-r from-cyan-600 to-cyan-700 hover:from-cyan-500 hover:to-cyan-600 shadow-lg shadow-cyan-500/30" 
+                      : "hover:bg-white/5 hover:border-white/20"
+                  }`}
                 >
                   <LayoutGrid className="h-4 w-4 mr-2" />
                   Card
@@ -579,7 +782,11 @@ export default function Home() {
                   variant={viewMode === "compact" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setViewMode("compact")}
-                  className="h-8 px-3"
+                  className={`h-8 px-3 transition-all hover:scale-105 ${
+                    viewMode === "compact" 
+                      ? "bg-gradient-to-r from-cyan-600 to-cyan-700 hover:from-cyan-500 hover:to-cyan-600 shadow-lg shadow-cyan-500/30" 
+                      : "hover:bg-white/5 hover:border-white/20"
+                  }`}
                 >
                   <List className="h-4 w-4 mr-2" />
                   Compact
@@ -611,29 +818,36 @@ export default function Home() {
             ) : (
               <>
                 <div className={viewMode === "compact" ? "space-y-2" : "space-y-4"}>
-                  {sortedNews.map((item) => {
+                  {sortedNews.map((item, index) => {
                     const isHolding = isRelevantToPortfolio(item)
                     return (
-                      <div key={item.id} className="relative">
-                        <NewsCard
-                          news={item}
-                          onBookmark={handleBookmark}
-                          isBookmarked={bookmarkedIds.has(item.id)}
-                          isRelevantToPortfolio={isHolding}
-                          isHolding={isHolding}
-                          compact={viewMode === "compact"}
-                        />
-                      </div>
+                      <ScrollReveal key={item.id} stagger={(index % 4) as 1 | 2 | 3 | 4}>
+                        <div className="relative">
+                          <NewsCard
+                            news={item}
+                            onBookmark={handleBookmark}
+                            isBookmarked={bookmarkedIds.has(item.id)}
+                            isRelevantToPortfolio={isHolding}
+                            isHolding={isHolding}
+                            compact={viewMode === "compact"}
+                            index={index}
+                          />
+                        </div>
+                      </ScrollReveal>
                     )
                   })}
                 </div>
 
                 <div className="pt-4 text-center">
-                  <Button
-                    onClick={() => setSize(size + 1)}
+                  <MagneticButton
+                    onClick={() => {
+                      setIsPaginationLoad(true)
+                      setSize(size + 1)
+                    }}
                     disabled={isLoadingMore || isReachingEnd}
                     variant="outline"
-                    className="w-full md:w-auto min-w-[200px]"
+                    className="w-full md:w-auto min-w-[200px] bg-gradient-to-r from-zinc-900/50 to-zinc-950/50 backdrop-blur-md border-white/10 hover:border-cyan-500/50 hover:bg-gradient-to-r hover:from-cyan-600/20 hover:to-cyan-700/20 transition-all hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ripple-effect"
+                    magneticDistance={10}
                   >
                     {isLoadingMore ? (
                       <>
@@ -645,7 +859,7 @@ export default function Home() {
                     ) : (
                       "Load More News"
                     )}
-                  </Button>
+                  </MagneticButton>
                 </div>
               </>
             )}
@@ -672,11 +886,6 @@ export default function Home() {
               <CatalystCalendar />
             </div>
 
-            {/* Analyst Ratings */}
-            <div className="max-h-[500px] overflow-hidden">
-              <AnalystRatings />
-            </div>
-
             {/* SEC Filings */}
             <div className="max-h-[500px] overflow-hidden">
               <SECFilings />
@@ -692,16 +901,20 @@ export default function Home() {
               <CongressTracker portfolio={portfolio} />
             </div>
 
+            {/* Government Contracts - Quiver API */}
+            <div className="max-h-[500px] overflow-hidden">
+              <GovContractsTracker portfolio={portfolio} />
+            </div>
+
             {news.length > 0 && (
               <>
-                <MarketOverview news={news} />
                 <TrendingTopics news={news} />
                 <SmartAlertsPanel news={news} />
               </>
             )}
 
-            <div className="sticky top-24 p-4 rounded-lg bg-zinc-950/50 backdrop-blur-sm border border-white/10">
-              <h3 className="text-sm font-semibold mb-3">Keyboard Shortcuts</h3>
+            <div className="sticky top-24 p-4 rounded-lg glass-premium border border-white/10">
+              <h3 className="text-sm font-semibold mb-3 font-display gradient-text-cyan">Keyboard Shortcuts</h3>
               <div className="space-y-2 text-xs text-muted-foreground">
                 <div className="flex justify-between">
                   <span>/</span>

@@ -19,6 +19,9 @@ export const API_KEYS = {
   /** Finnhub - Stock prices & charts (Free tier or $9/month Starter) */
   FINNHUB: process.env.NEXT_PUBLIC_FINNHUB_API_KEY || "",
   
+  /** Quiver Quantitative - Congressional trades, insider trading ($10/month Hobbyist) */
+  QUIVER: process.env.QUIVER_API_KEY || "",
+  
   /** OpenAI via Vercel AI Gateway - AI analysis (Pay-as-you-go) */
   // No explicit key needed - uses Vercel AI Gateway by default
 } as const
@@ -31,6 +34,7 @@ export const API_BASE_URLS = {
   EODHD: "https://eodhd.com",
   FMP: "https://financialmodelingprep.com",
   FINNHUB: "https://finnhub.io",
+  QUIVER: "https://api.quiverquant.com",
   COINGECKO: "https://api.coingecko.com",
   BINANCE: "https://api.binance.com",
   BINANCE_US: "https://api.binance.us",
@@ -100,6 +104,20 @@ export const API_ENDPOINTS = {
   STOCKTWITS: {
     STREAM_SYMBOL: "/api/2/streams/symbol",
   },
+  
+  // Quiver Quantitative
+  QUIVER: {
+    LIVE_CONGRESS_TRADING: "/beta/live/congresstrading",
+    RECENT_SENATE_TRADING: "/beta/recent/senatetrading",
+    RECENT_HOUSE_TRADING: "/beta/recent/housetrading",
+    // Alternative endpoint formats to try
+    V1_CONGRESS_TRADING: "/v1/congress/trading",
+    V1_SENATE_TRADING: "/v1/senatetrading",
+    V1_HOUSE_TRADING: "/v1/housetrading",
+    HISTORICAL_CONGRESS_TRADING: "/beta/historical/congresstrading",
+    HISTORICAL_SENATE_TRADING: "/beta/historical/senatetrading",
+    HISTORICAL_HOUSE_TRADING: "/beta/historical/housetrading",
+  },
 } as const
 
 // ============================================================================
@@ -161,6 +179,24 @@ export function getEodhdUrl(endpoint: string, params?: Record<string, string>): 
   return url.toString()
 }
 
+/**
+ * Get full URL for Quiver Quantitative endpoint
+ * Note: API key should be passed via Authorization header, but we also support query param as fallback
+ */
+export function getQuiverUrl(endpoint: string, params?: Record<string, string>): string {
+  const url = new URL(`${API_BASE_URLS.QUIVER}${endpoint}`)
+  // Some APIs use query param auth as fallback
+  if (API_KEYS.QUIVER && !params?.token && !params?.apikey) {
+    // Don't add to URL - use header instead (see fetch calls)
+  }
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.set(key, value)
+    })
+  }
+  return url.toString()
+}
+
 // ============================================================================
 // API STATUS CHECKS
 // ============================================================================
@@ -212,6 +248,12 @@ export function getApiStatuses(): Record<string, ApiStatus> {
       name: "Stocktwits",
       cost: "Free (rate limited)",
       status: "ok",
+    },
+    quiver: {
+      configured: isApiKeyConfigured("QUIVER"),
+      name: "Quiver Quantitative",
+      cost: "$10/month (Hobbyist)",
+      status: isApiKeyConfigured("QUIVER") ? "ok" : "error",
     },
     openai: {
       configured: true, // Uses Vercel AI Gateway
