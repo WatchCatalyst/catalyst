@@ -10,17 +10,33 @@ import { headers } from "next/headers"
 export async function signInWithGoogle() {
   const supabase = await createClient()
   const headersList = await headers()
-  const origin = headersList.get("origin") || headersList.get("x-forwarded-host") || "http://localhost:3000"
   
-  // Handle both localhost and production
-  const baseUrl = origin.startsWith("http") ? origin : `https://${origin}`
+  // Get the origin from headers or use environment variable for production
+  let origin = headersList.get("origin") || headersList.get("x-forwarded-host")
+  
+  // If no origin in headers, try to construct from host
+  if (!origin) {
+    const host = headersList.get("host")
+    if (host) {
+      origin = host.includes("localhost") ? `http://${host}` : `https://${host}`
+    } else {
+      origin = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+    }
+  }
+  
+  // Ensure origin has protocol
+  if (!origin.startsWith("http")) {
+    origin = origin.includes("localhost") ? `http://${origin}` : `https://${origin}`
+  }
+  
+  const redirectTo = `${origin}/auth/callback`
+  
+  console.log("OAuth redirectTo:", redirectTo) // Debug log
   
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      // Supabase redirects to Google, then Google redirects back to Supabase's callback
-      // Then Supabase redirects to our app's callback route
-      redirectTo: `${baseUrl}/auth/callback`,
+      redirectTo,
       queryParams: {
         access_type: "offline",
         prompt: "consent",
