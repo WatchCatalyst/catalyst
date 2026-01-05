@@ -7,7 +7,7 @@ import { TrendingTopics } from "@/components/trending-topics"
 import { ArticleDetailModal } from "@/components/article-detail-modal"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { SmartAlertsPanel } from "@/components/smart-alerts-panel"
-import { RefreshCw, LayoutGrid, List } from "lucide-react"
+import { RefreshCw, LayoutGrid, List, Bookmark } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import useSWRInfinite from "swr/infinite"
@@ -509,17 +509,27 @@ export default function Home() {
   // Only apply search filter on frontend (real-time search)
   const filteredNews = useMemo(
     () => {
-      if (!searchQuery) return news
+      let result = news
       
-      const query = searchQuery.toLowerCase()
-      return news.filter((item: NewsItem) =>
-        item.title.toLowerCase().includes(query) ||
-        item.summary.toLowerCase().includes(query) ||
-        (item.keywords && item.keywords.some((keyword: string) => keyword.toLowerCase().includes(query))) ||
-        item.source.toLowerCase().includes(query)
-      )
+      // Filter by bookmarks if showWatchlistOnly is true
+      if (showWatchlistOnly && bookmarkedIds.size > 0) {
+        result = result.filter((item: NewsItem) => bookmarkedIds.has(item.id))
+      }
+      
+      // Then apply search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        result = result.filter((item: NewsItem) =>
+          item.title.toLowerCase().includes(query) ||
+          item.summary.toLowerCase().includes(query) ||
+          (item.keywords && item.keywords.some((keyword: string) => keyword.toLowerCase().includes(query))) ||
+          item.source.toLowerCase().includes(query)
+        )
+      }
+      
+      return result
     },
-    [news, searchQuery],
+    [news, searchQuery, showWatchlistOnly, bookmarkedIds],
   )
 
   // Sort by portfolio relevance if portfolio exists, otherwise keep API order
@@ -768,6 +778,19 @@ export default function Home() {
             <div className="flex items-center justify-between gap-4 pb-4 border-b border-border/50">
               <div className="flex items-center gap-2">
                 <Button
+                  variant={showWatchlistOnly ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowWatchlistOnly(!showWatchlistOnly)}
+                  className={`h-8 px-3 transition-all hover:scale-105 ${
+                    showWatchlistOnly 
+                      ? "bg-gradient-to-r from-cyan-600 to-cyan-700 hover:from-cyan-500 hover:to-cyan-600 shadow-lg shadow-cyan-500/30" 
+                      : "hover:bg-white/5 hover:border-white/20"
+                  }`}
+                >
+                  <Bookmark className={`h-4 w-4 mr-2 ${showWatchlistOnly ? "fill-current" : ""}`} />
+                  Bookmarks {bookmarkedIds.size > 0 && `(${bookmarkedIds.size})`}
+                </Button>
+                <Button
                   variant={viewMode === "card" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setViewMode("card")}
@@ -809,9 +832,18 @@ export default function Home() {
             ) : sortedNews.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">
-                  {searchQuery ? "No news found matching your search" : "No news available at this time"}
+                  {showWatchlistOnly 
+                    ? "No bookmarked articles found" 
+                    : searchQuery 
+                    ? "No news found matching your search" 
+                    : "No news available at this time"}
                 </p>
-                {!searchQuery && (
+                {showWatchlistOnly && bookmarkedIds.size === 0 && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Bookmark articles by clicking the bookmark icon on any news card.
+                  </p>
+                )}
+                {!searchQuery && !showWatchlistOnly && (
                   <p className="text-sm text-muted-foreground mt-2">
                     Try refreshing the feed or check back later.
                   </p>
