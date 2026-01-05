@@ -895,11 +895,21 @@ body {
   opacity: 0;
   transform: translateY(50px);
   transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 0;
+  will-change: opacity, transform;
 }
 
 .reveal-on-scroll.revealed {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* Ensure proper cleanup when elements are removed */
+.reveal-on-scroll:empty {
+  display: none;
+  height: 0;
+  margin: 0;
+  padding: 0;
 }
 
 /* Stagger delays for scroll reveals */

@@ -817,22 +817,23 @@ export default function Home() {
               </div>
             ) : (
               <>
-                <div className={viewMode === "compact" ? "space-y-2" : "space-y-4"}>
+                <div className={viewMode === "compact" ? "space-y-2" : "space-y-4"} style={{ minHeight: 0 }}>
                   {sortedNews.map((item, index) => {
                     const isHolding = isRelevantToPortfolio(item)
                     return (
-                      <ScrollReveal key={item.id} stagger={(index % 4) as 1 | 2 | 3 | 4}>
-                        <div className="relative">
-                          <NewsCard
-                            news={item}
-                            onBookmark={handleBookmark}
-                            isBookmarked={bookmarkedIds.has(item.id)}
-                            isRelevantToPortfolio={isHolding}
-                            isHolding={isHolding}
-                            compact={viewMode === "compact"}
-                            index={index}
-                          />
-                        </div>
+                      <ScrollReveal 
+                        key={`${item.id}-${item.timestamp}`} 
+                        stagger={(index % 4) as 1 | 2 | 3 | 4}
+                      >
+                        <NewsCard
+                          news={item}
+                          onBookmark={handleBookmark}
+                          isBookmarked={bookmarkedIds.has(item.id)}
+                          isRelevantToPortfolio={isHolding}
+                          isHolding={isHolding}
+                          compact={viewMode === "compact"}
+                          index={index}
+                        />
                       </ScrollReveal>
                     )
                   })}
