@@ -18,11 +18,18 @@ export async function GET(request: Request) {
   }
 
   if (code) {
+    // Check if environment variables are set
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.error("Missing Supabase environment variables")
+      return NextResponse.redirect(`${origin}/?auth_error=missing_env_vars`)
+    }
+    
     const supabase = await createClient()
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     
     if (error) {
       console.error("Supabase exchangeCodeForSession error:", error)
+      console.error("Error details:", JSON.stringify(error, null, 2))
       return NextResponse.redirect(`${origin}/?auth_error=${encodeURIComponent(error.message)}`)
     }
     
