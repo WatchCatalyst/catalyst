@@ -27,8 +27,8 @@ import { EarningsCalendar } from "@/components/earnings-calendar"
 import { SECFilings } from "@/components/sec-filings"
 import { CryptoPrices } from "@/components/crypto-prices"
 import { SocialSentiment } from "@/components/social-sentiment"
-import { ScrollReveal } from "@/components/scroll-reveal"
 import { MagneticButton } from "@/components/magnetic-button"
+import { AuthButton } from "@/components/auth-button"
 
 export type NewsCategoryType = "all" | "crypto" | "stocks" | "war" | "technology" | "politics" | "animals" | "sports"
 
@@ -341,37 +341,38 @@ export default function Home() {
       setNewArticleCount(topNewItems.length)
       setLastUpdateTime(new Date())
 
-      const prefs = localStorage.getItem("watchcatalyst-preferences")
-      let shouldNotify = true
-      if (prefs) {
-        const parsed = JSON.parse(prefs)
-        if (!parsed.enabled) shouldNotify = false
-      }
-
-      if (shouldNotify) {
-        const firstNewItem = topNewItems[0]
-        toast({
-          title: `${topNewItems.length} New ${topNewItems.length === 1 ? "Article" : "Articles"}`,
-          description: firstNewItem?.title || "Check the latest updates",
-          action: (
-            <button
-              onClick={() => {
-                const element = document.getElementById(`news-${firstNewItem.id}`)
-                if (element) {
-                  element.scrollIntoView({ behavior: "smooth", block: "center" })
-                  element.classList.add("ring-2", "ring-accent-bright", "ring-offset-2", "ring-offset-background")
-                  setTimeout(() => {
-                    element.classList.remove("ring-2", "ring-accent-bright", "ring-offset-2", "ring-offset-background")
-                  }, 3000)
-                }
-              }}
-              className="shrink-0 rounded-md bg-accent-bright px-3 py-2 text-sm font-medium text-black hover:bg-accent-bright/90 transition-colors"
-            >
-              View
-            </button>
-          ),
-        })
-      }
+      // DISABLED for testing - new article toast notifications
+      // const prefs = localStorage.getItem("watchcatalyst-preferences")
+      // let shouldNotify = true
+      // if (prefs) {
+      //   const parsed = JSON.parse(prefs)
+      //   if (!parsed.enabled) shouldNotify = false
+      // }
+      //
+      // if (shouldNotify) {
+      //   const firstNewItem = topNewItems[0]
+      //   toast({
+      //     title: `${topNewItems.length} New ${topNewItems.length === 1 ? "Article" : "Articles"}`,
+      //     description: firstNewItem?.title || "Check the latest updates",
+      //     action: (
+      //       <button
+      //         onClick={() => {
+      //           const element = document.getElementById(`news-${firstNewItem.id}`)
+      //           if (element) {
+      //             element.scrollIntoView({ behavior: "smooth", block: "center" })
+      //             element.classList.add("ring-2", "ring-accent-bright", "ring-offset-2", "ring-offset-background")
+      //             setTimeout(() => {
+      //               element.classList.remove("ring-2", "ring-accent-bright", "ring-offset-2", "ring-offset-background")
+      //             }, 3000)
+      //           }
+      //         }}
+      //         className="shrink-0 rounded-md bg-accent-bright px-3 py-2 text-sm font-medium text-black hover:bg-accent-bright/90 transition-colors"
+      //       >
+      //         View
+      //       </button>
+      //     ),
+      //   })
+      // }
     }
 
     // Update seen IDs
@@ -724,6 +725,9 @@ export default function Home() {
                 </svg>
               </a>
 
+              {/* Google Sign In Button - Optional auth */}
+              <AuthButton />
+
               {/* Cyan Action Button - Like "LAUNCH APP" in reference */}
               <MagneticButton
                 onClick={() => handleRefresh(false)}
@@ -755,9 +759,7 @@ export default function Home() {
           <div className="lg:col-span-3 space-y-4">
             {/* Context Chart - Only show when filtering by symbol */}
             {searchQuery && (
-              <ScrollReveal>
-                <ContextChart symbol={searchQuery} articles={filteredNews} />
-              </ScrollReveal>
+              <ContextChart symbol={searchQuery} articles={filteredNews} />
             )}
 
             {/* Search and View Controls */}
@@ -821,20 +823,16 @@ export default function Home() {
                   {sortedNews.map((item, index) => {
                     const isHolding = isRelevantToPortfolio(item)
                     return (
-                      <ScrollReveal 
-                        key={`${item.id}-${item.timestamp}`} 
-                        stagger={(index % 4) as 1 | 2 | 3 | 4}
-                      >
-                        <NewsCard
-                          news={item}
-                          onBookmark={handleBookmark}
-                          isBookmarked={bookmarkedIds.has(item.id)}
-                          isRelevantToPortfolio={isHolding}
-                          isHolding={isHolding}
-                          compact={viewMode === "compact"}
-                          index={index}
-                        />
-                      </ScrollReveal>
+                      <NewsCard
+                        key={`${item.id}-${item.timestamp}`}
+                        news={item}
+                        onBookmark={handleBookmark}
+                        isBookmarked={bookmarkedIds.has(item.id)}
+                        isRelevantToPortfolio={isHolding}
+                        isHolding={isHolding}
+                        compact={viewMode === "compact"}
+                        index={index}
+                      />
                     )
                   })}
                 </div>
@@ -939,8 +937,8 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Smart Browser Notifications - watches news and sends system notifications */}
-      <SmartNotifications news={news} portfolio={portfolio} />
+      {/* Smart Browser Notifications - DISABLED for testing */}
+      {/* <SmartNotifications news={news} portfolio={portfolio} /> */}
 
       <ArticleDetailModal
         news={selectedArticle}

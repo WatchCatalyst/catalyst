@@ -1,9 +1,15 @@
 import type { NextRequest } from "next/server"
-import { NextResponse } from "next/server"
+import { updateSession } from "@/lib/supabase/middleware"
 
+/**
+ * Middleware to refresh auth sessions
+ * 
+ * IMPORTANT: This does NOT block any routes - auth is completely optional.
+ * It only refreshes the session cookie if a user is signed in.
+ */
 export async function middleware(request: NextRequest) {
-  // No auth checks - just pass through
-  return NextResponse.next()
+  // updateSession handles session refresh and returns NextResponse.next() if no auth
+  return await updateSession(request)
 }
 
 export const config = {

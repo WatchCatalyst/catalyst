@@ -890,13 +890,12 @@ body {
   transform: scale(1.05);
 }
 
-/* 29. Scroll Reveal Animation */
+/* 29. Scroll Reveal Animation - Always visible by default to prevent blank pages */
 .reveal-on-scroll {
-  opacity: 0;
-  transform: translateY(50px);
-  transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 1;
+  transform: translateY(0);
+  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   min-height: 0;
-  will-change: opacity, transform;
 }
 
 .reveal-on-scroll.revealed {
