@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: false,
         data: [],
-        message: "QUIVER_API_KEY not configured. Government contracts require Quiver API access.",
+        message: "API key not configured. Government contracts are not available at this time.",
       })
     }
 
@@ -113,7 +113,7 @@ export async function GET(request: Request) {
       timestamp: new Date().toISOString(),
       count: contracts.length,
       message: contracts.length === 0 
-        ? "No contracts found. Verify your Quiver API key has Tier 1 access."
+        ? "No contracts found at this time."
         : undefined,
     }
 

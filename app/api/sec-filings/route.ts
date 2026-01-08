@@ -57,9 +57,9 @@ export async function GET(request: NextRequest) {
       console.warn(`[SEC Filings API] FMP error ${response.status}:`, errorText.substring(0, 200))
       return NextResponse.json({
         success: false,
-        error: `FMP API error: ${response.status}`,
+        error: `API error: ${response.status}`,
         data: [],
-        message: "SEC filings may not be available on your FMP plan",
+        message: "SEC filings may not be available at this time",
       }, { status: response.status })
     }
 

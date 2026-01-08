@@ -82,7 +82,7 @@ export function EarningsCalendar() {
 
   const formatDate = (dateStr: string) => {
     // Parse date string as date-only (YYYY-MM-DD) to avoid timezone issues
-    // FMP returns dates in YYYY-MM-DD format, which should be interpreted as market date (EST)
+    // Dates are returned in YYYY-MM-DD format, which should be interpreted as market date (EST)
     const [year, month, day] = dateStr.split('-').map(Number)
     
     // Get today's date components in EST timezone for comparison
@@ -178,12 +178,12 @@ export function EarningsCalendar() {
             <TooltipTrigger asChild>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-help">
                 <Info className="h-3.5 w-3.5" />
-                <span>Source: FMP</span>
+                <span>Live Data</span>
               </div>
             </TooltipTrigger>
             <TooltipContent>
               <div className="space-y-1 text-xs">
-                <p>Data from Financial Modeling Prep API</p>
+                <p>Real-time earnings data</p>
                 {lastUpdated && (
                   <p className="text-muted-foreground">Updated: {formatTimeAgo(lastUpdated)}</p>
                 )}
@@ -276,12 +276,12 @@ export function EarningsCalendar() {
               Data Accuracy Notice
             </p>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Earnings dates and estimates are provided by Financial Modeling Prep API and may occasionally contain errors. 
+              Earnings dates and estimates are provided by third-party sources and may occasionally contain errors. 
               <strong className="text-foreground"> Always verify critical dates</strong> using the verification links before making trading decisions.
             </p>
           </div>
           <p className="text-xs text-muted-foreground text-center">
-            Data source: Financial Modeling Prep • Dates in EST • Hover over items to verify
+            Dates in EST • Hover over items to verify
           </p>
         </div>
       </CardContent>

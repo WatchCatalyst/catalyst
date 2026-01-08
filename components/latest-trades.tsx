@@ -81,7 +81,7 @@ export function LatestTrades() {
         ) : displayTrades.length === 0 ? (
           <div className="p-8">
             <p className="text-xs text-center text-muted-foreground">
-              No Senate trades available. Make sure QUIVER_API_KEY or FMP_API_KEY is configured.
+              No Senate trades available at this time.
             </p>
           </div>
         ) : (

@@ -39,9 +39,9 @@ export async function GET(request: NextRequest) {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error(`[API] Binance.US error for ${symbol}:`, response.status, response.statusText)
+        console.error(`[API] Crypto API error for ${symbol}:`, response.status, response.statusText)
         return NextResponse.json(
-          { error: `Binance.US API error: ${response.status} ${response.statusText}` },
+          { error: `API error: ${response.status} ${response.statusText}` },
           { status: response.status }
         )
       }
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       const data = await response.json()
 
       if (!Array.isArray(data) || data.length === 0) {
-        return NextResponse.json({ error: "Empty data from Binance" }, { status: 404 })
+        return NextResponse.json({ error: "No chart data available" }, { status: 404 })
       }
 
       // Map Binance format to our format
@@ -65,12 +65,12 @@ export async function GET(request: NextRequest) {
       addRateLimitHeaders(cryptoResponse, rateLimit)
       return cryptoResponse
     } else {
-      // Fetch from Finnhub for stocks
+      // Fetch from stock API
       const apiKey = process.env.FINNHUB_API_KEY
 
       if (!apiKey) {
         return NextResponse.json(
-          { error: "Finnhub API key not configured" },
+          { error: "API key not configured" },
           { status: 500 }
         )
       }
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
 
       if (!response.ok) {
         return NextResponse.json(
-          { error: `Finnhub API error: ${response.status}` },
+          { error: `API error: ${response.status}` },
           { status: response.status }
         )
       }
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
       const data = await response.json()
 
       if (data.s !== "ok" || !Array.isArray(data.c) || data.c.length === 0) {
-        return NextResponse.json({ error: "Empty data from Finnhub" }, { status: 404 })
+        return NextResponse.json({ error: "No chart data available" }, { status: 404 })
       }
 
       const result = []

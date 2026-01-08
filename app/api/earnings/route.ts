@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
         success: false,
         error: lastError.message,
         data: [],
-        message: "Earnings calendar may not be available on your FMP plan",
+        message: "Earnings calendar may not be available at this time",
       }, { status: 404 })
     }
 
@@ -129,8 +129,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
       count: validatedEarnings.length,
       dataQuality: {
-        note: "Data provided by Financial Modeling Prep. Please verify critical dates and estimates before trading.",
-        source: "FMP API",
+        note: "Data provided by third-party sources. Please verify critical dates and estimates before trading.",
         lastValidated: new Date().toISOString(),
       },
     })

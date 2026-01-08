@@ -265,11 +265,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
       count: trades.length,
       message: trades.length === 0 
-        ? QUIVER_KEY 
-          ? "No trades found. Check your Quiver API key has Tier 1 access (Hobbyist plan)."
-          : FMP_KEY 
-            ? "No trades found. Your FMP API key may not have access to congressional trades data. Consider using Quiver Quantitative ($10/month) for reliable congressional trades access."
-            : "No API key configured. Congressional trades require either QUIVER_API_KEY (recommended, $10/month) or FMP_API_KEY with congressional data access."
+        ? "No congressional trades available at this time."
         : undefined,
     }
     
@@ -291,7 +287,7 @@ export async function GET(request: NextRequest) {
       success: false,
       error: error instanceof Error ? error.message : "Failed to fetch congressional trades",
       data: [],
-      message: "Check console logs for detailed error information. Ensure QUIVER_API_KEY (recommended) or FMP_API_KEY is set and has access to congressional trades.",
+      message: "Unable to fetch congressional trades at this time.",
     })
   }
 }

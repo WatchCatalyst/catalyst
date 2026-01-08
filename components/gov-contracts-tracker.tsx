@@ -154,7 +154,7 @@ export function GovContractsTracker({ portfolio = [] }: GovContractsTrackerProps
         ) : filteredContracts.length === 0 ? (
           <div className="p-8 text-center text-xs text-muted-foreground">
             {contracts.length === 0 
-              ? "No contracts found. Check your Quiver API key." 
+              ? "No contracts found at this time." 
               : `No contracts match your search.`}
           </div>
         ) : (
