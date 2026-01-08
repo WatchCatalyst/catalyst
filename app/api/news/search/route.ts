@@ -1,12 +1,29 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { checkRateLimit, addRateLimitHeaders, rateLimitResponse, RATE_LIMIT_CONFIG } from "@/lib/rate-limit"
+import { validateSearchQuery, validateCategory, validationError } from "@/lib/input-validation"
 
-export async function GET(request: Request) {
+const ALLOWED_CATEGORIES = ["all", "crypto", "stocks", "forex", "commodities", "economy"]
+
+export async function GET(request: NextRequest) {
+  // Rate limiting (stricter for search)
+  const rateLimit = checkRateLimit(request, RATE_LIMIT_CONFIG.search)
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit.resetAt)
+  }
+
   const { searchParams } = new URL(request.url)
-  const query = searchParams.get("q")
-  const category = searchParams.get("category") || "all"
+  const queryParam = searchParams.get("q")
+  const categoryParam = searchParams.get("category") || "all"
 
+  // Validate input
+  const query = validateSearchQuery(queryParam)
   if (!query) {
-    return NextResponse.json({ success: false, error: "Search query is required" }, { status: 400 })
+    return NextResponse.json(validationError("Invalid search query"), { status: 400 })
+  }
+
+  const category = validateCategory(categoryParam, ALLOWED_CATEGORIES)
+  if (!category) {
+    return NextResponse.json(validationError("Invalid category"), { status: 400 })
   }
 
   try {
@@ -35,12 +52,14 @@ export async function GET(request: Request) {
       },
     ]
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: searchResults,
       query,
       count: searchResults.length,
     })
+    addRateLimitHeaders(response, rateLimit)
+    return response
   } catch (error) {
     console.error("[v0] Error searching news:", error)
     return NextResponse.json({ success: false, error: "Failed to search news" }, { status: 500 })

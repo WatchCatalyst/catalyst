@@ -17,7 +17,7 @@ export const API_KEYS = {
   FMP: process.env.FMP_API_KEY || "",
   
   /** Finnhub - Stock prices & charts (Free tier or $9/month Starter) */
-  FINNHUB: process.env.NEXT_PUBLIC_FINNHUB_API_KEY || "",
+  FINNHUB: process.env.FINNHUB_API_KEY || "",
   
   /** Quiver Quantitative - Congressional trades, insider trading ($10/month Hobbyist) */
   QUIVER: process.env.QUIVER_API_KEY || "",

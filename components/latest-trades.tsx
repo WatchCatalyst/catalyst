@@ -1,26 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { getPoliticianTrades, getInsiderTrades, type AlphaTrade } from "@/lib/alpha-service"
+import { getPoliticianTrades, type AlphaTrade } from "@/lib/alpha-service"
 
 export function LatestTrades() {
   const [trades, setTrades] = useState<AlphaTrade[]>([])
   const [loading, setLoading] = useState(true)
-  const [tradeType, setTradeType] = useState<"senate" | "insider">("senate")
 
   useEffect(() => {
     async function fetchTrades() {
       try {
         setLoading(true)
-        
-        if (tradeType === "senate") {
-          const politicianTrades = await getPoliticianTrades()
-          setTrades(politicianTrades)
-        } else {
-          const insiderTrades = await getInsiderTrades()
-          setTrades(insiderTrades)
-        }
+        const politicianTrades = await getPoliticianTrades()
+        setTrades(politicianTrades)
       } catch (error) {
         console.error("[LatestTrades] Error fetching trades:", error)
         setTrades([])
@@ -30,7 +22,7 @@ export function LatestTrades() {
     }
 
     fetchTrades()
-  }, [tradeType])
+  }, [])
 
   const formatDate = (dateString: string): string => {
     try {
@@ -70,20 +62,10 @@ export function LatestTrades() {
   return (
     <div className="bg-zinc-950/50 rounded-lg border border-white/10 overflow-hidden">
       <div className="p-4 border-b border-border">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm">ALPHA TRACKER</h3>
+          <span className="text-xs text-muted-foreground">🏛️ Senate</span>
         </div>
-
-        <Tabs value={tradeType} onValueChange={(v) => setTradeType(v as "senate" | "insider")}>
-          <TabsList>
-            <TabsTrigger value="senate" className="text-xs">
-              🏛️ Senate
-            </TabsTrigger>
-            <TabsTrigger value="insider" className="text-xs">
-              💼 Insiders
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
       </div>
 
       <div className="max-h-[500px] overflow-y-auto">
@@ -97,39 +79,10 @@ export function LatestTrades() {
             ))}
           </div>
         ) : displayTrades.length === 0 ? (
-          <div className="p-8 space-y-3">
-            <p className="text-xs text-center text-muted-foreground mb-3">
-              No trades available from API sources.
+          <div className="p-8">
+            <p className="text-xs text-center text-muted-foreground">
+              No Senate trades available. Make sure QUIVER_API_KEY or FMP_API_KEY is configured.
             </p>
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded p-3">
-              <p className="text-xs font-semibold text-yellow-500 mb-2">Free Alternatives:</p>
-              <div className="space-y-1.5 text-xs text-muted-foreground">
-                <a 
-                  href="https://www.capitoltrades.com" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block text-accent-bright hover:underline"
-                >
-                  Capitol Trades → (Free Senate data)
-                </a>
-                <a 
-                  href="https://www.sec.gov/edgar/searchedgar/companysearch.html" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block text-accent-bright hover:underline"
-                >
-                  SEC EDGAR → (Free Insider filings)
-                </a>
-                <a 
-                  href="https://www.openinsider.com" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block text-accent-bright hover:underline"
-                >
-                  OpenInsider → (Free Insider trades)
-                </a>
-              </div>
-            </div>
           </div>
         ) : (
           displayTrades.map((trade, index) => {

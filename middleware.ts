@@ -1,15 +1,21 @@
 import type { NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/middleware"
+import { addSecurityHeaders } from "@/lib/security-headers"
 
 /**
- * Middleware to refresh auth sessions
+ * Middleware to refresh auth sessions and apply security headers
  * 
  * IMPORTANT: This does NOT block any routes - auth is completely optional.
  * It only refreshes the session cookie if a user is signed in.
  */
 export async function middleware(request: NextRequest) {
   // updateSession handles session refresh and returns NextResponse.next() if no auth
-  return await updateSession(request)
+  const response = await updateSession(request)
+  
+  // Add security headers to all responses
+  addSecurityHeaders(response)
+  
+  return response
 }
 
 export const config = {

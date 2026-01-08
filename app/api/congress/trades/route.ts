@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { API_KEYS, API_BASE_URLS, API_ENDPOINTS, getQuiverUrl } from "@/lib/api-config"
+import { checkRateLimit, addRateLimitHeaders, rateLimitResponse, RATE_LIMIT_CONFIG } from "@/lib/rate-limit"
+import { validateTicker, validateCategory, sanitizeString } from "@/lib/input-validation"
 
 // Force dynamic rendering for real-time updates
 export const dynamic = 'force-dynamic'
@@ -19,10 +21,22 @@ export interface CongressTrade {
   chamber: "house" | "senate"
 }
 
-export async function GET(request: Request) {
+const ALLOWED_CHAMBERS = ["all", "house", "senate"]
+
+export async function GET(request: NextRequest) {
+  // Rate limiting
+  const rateLimit = checkRateLimit(request, RATE_LIMIT_CONFIG.api)
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit.resetAt)
+  }
+
   const { searchParams } = new URL(request.url)
-  const ticker = searchParams.get("ticker") || ""
-  const chamber = searchParams.get("chamber") || "all" // all, house, senate
+  const tickerParam = searchParams.get("ticker") || ""
+  const chamberParam = searchParams.get("chamber") || "all"
+
+  // Validate input
+  const ticker = tickerParam ? validateTicker(tickerParam) || "" : ""
+  const chamber = validateCategory(chamberParam, ALLOWED_CHAMBERS) || "all"
 
   const QUIVER_KEY = API_KEYS.QUIVER
   const FMP_KEY = API_KEYS.FMP
@@ -262,6 +276,9 @@ export async function GET(request: Request) {
     console.log("[v0] API Response - success:", responseData.success, "count:", responseData.count, "data length:", responseData.data.length)
     
     const response = NextResponse.json(responseData)
+    
+    // Add rate limit headers
+    addRateLimitHeaders(response, rateLimit)
     
     // Set cache control headers for client-side caching (2 minutes)
     response.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=60')

@@ -1,11 +1,21 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { checkRateLimit, addRateLimitHeaders, rateLimitResponse, RATE_LIMIT_CONFIG } from "@/lib/rate-limit"
+import { validateTicker, validationError } from "@/lib/input-validation"
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Rate limiting
+  const rateLimit = checkRateLimit(request, RATE_LIMIT_CONFIG.api)
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit.resetAt)
+  }
+
   const { searchParams } = new URL(request.url)
-  const symbol = searchParams.get("symbol")
+  const symbolParam = searchParams.get("symbol")
 
+  // Validate input
+  const symbol = validateTicker(symbolParam)
   if (!symbol) {
-    return NextResponse.json({ error: "Symbol is required" }, { status: 400 })
+    return NextResponse.json(validationError("Invalid symbol format"), { status: 400 })
   }
 
   try {
@@ -51,10 +61,12 @@ export async function GET(request: Request) {
         close: parseFloat(d[4]),
       }))
 
-      return NextResponse.json({ data: result })
+      const cryptoResponse = NextResponse.json({ data: result })
+      addRateLimitHeaders(cryptoResponse, rateLimit)
+      return cryptoResponse
     } else {
       // Fetch from Finnhub for stocks
-      const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY
+      const apiKey = process.env.FINNHUB_API_KEY
 
       if (!apiKey) {
         return NextResponse.json(
@@ -102,7 +114,9 @@ export async function GET(request: Request) {
         })
       }
 
-      return NextResponse.json({ data: result })
+      const stockResponse = NextResponse.json({ data: result })
+      addRateLimitHeaders(stockResponse, rateLimit)
+      return stockResponse
     }
   } catch (error: any) {
     console.error(`❌ [API] Chart fetch error for ${symbol}:`, error)

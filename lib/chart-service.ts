@@ -23,23 +23,13 @@ function isCrypto(symbol: string): boolean {
 }
 
 /**
- * Fetch stock candlestick data from Finnhub
+ * Fetch stock candlestick data from Finnhub via our API route
  */
 async function fetchStockChartData(symbol: string): Promise<CandlestickData[]> {
-  const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY
-
-  if (!apiKey) {
-    console.warn("[chart-service] Finnhub API key not configured. Stock charts will not be available.")
-    return []
-  }
-
   try {
-    // Calculate timestamps for last 100 days
-    const endTime = Math.floor(Date.now() / 1000) // Current time in seconds
-    const startTime = endTime - 100 * 24 * 60 * 60 // 100 days ago
-
+    // Use our server-side API route which handles Finnhub API key securely
     const response = await fetch(
-      `https://finnhub.io/api/v1/stock/candle?symbol=${symbol.toUpperCase()}&resolution=D&from=${startTime}&to=${endTime}&token=${apiKey}`,
+      `/api/chart?symbol=${symbol.toUpperCase()}`,
       {
         headers: {
           Accept: "application/json",
@@ -48,35 +38,18 @@ async function fetchStockChartData(symbol: string): Promise<CandlestickData[]> {
     )
 
     if (!response.ok) {
-      console.error(`[chart-service] Finnhub API error for ${symbol}: ${response.status}`)
+      console.error(`[chart-service] API error for ${symbol}: ${response.status}`)
       return []
     }
 
-    const data = await response.json()
+    const result = await response.json()
 
-    if (data.s !== "ok" || !Array.isArray(data.c) || data.c.length === 0) {
-      console.warn(`[chart-service] Invalid or empty data from Finnhub for ${symbol}`)
+    if (!result.data || !Array.isArray(result.data) || result.data.length === 0) {
+      console.warn(`[chart-service] Invalid or empty data from API for ${symbol}`)
       return []
     }
 
-    // Map Finnhub format to our format
-    // Finnhub returns: { c: close[], h: high[], l: low[], o: open[], t: time[] }
-    const result: CandlestickData[] = []
-    for (let i = 0; i < data.c.length; i++) {
-      const timestamp = data.t[i] * 1000 // Convert to milliseconds
-      const date = new Date(timestamp)
-      const timeStr = date.toISOString().split("T")[0] // Format as YYYY-MM-DD
-
-      result.push({
-        time: timeStr,
-        open: data.o[i],
-        high: data.h[i],
-        low: data.l[i],
-        close: data.c[i],
-      })
-    }
-
-    return result
+    return result.data
   } catch (error) {
     console.error(`[chart-service] Failed to fetch stock chart data for ${symbol}:`, error)
     return []

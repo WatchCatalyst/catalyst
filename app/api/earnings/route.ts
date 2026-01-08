@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { checkRateLimit, addRateLimitHeaders, rateLimitResponse, RATE_LIMIT_CONFIG } from "@/lib/rate-limit"
+import { validateDate } from "@/lib/input-validation"
 
 export interface EarningsEvent {
   date: string
@@ -11,10 +13,20 @@ export interface EarningsEvent {
   revenueEstimated?: number
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Rate limiting
+  const rateLimit = checkRateLimit(request, RATE_LIMIT_CONFIG.api)
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit.resetAt)
+  }
+
   const { searchParams } = new URL(request.url)
-  const fromDate = searchParams.get("from") || new Date().toISOString().split("T")[0]
-  const toDate = searchParams.get("to") || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] // 30 days ahead
+  const fromDateParam = searchParams.get("from") || new Date().toISOString().split("T")[0]
+  const toDateParam = searchParams.get("to") || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+  
+  // Validate dates
+  const fromDate = validateDate(fromDateParam) || new Date().toISOString().split("T")[0]
+  const toDate = validateDate(toDateParam) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
   
   const FMP_KEY = process.env.FMP_API_KEY
 
@@ -111,7 +123,7 @@ export async function GET(request: Request) {
     // Sort by date (soonest first)
     validatedEarnings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: validatedEarnings.slice(0, 50), // Return next 50 earnings
       timestamp: new Date().toISOString(),
@@ -122,6 +134,8 @@ export async function GET(request: Request) {
         lastValidated: new Date().toISOString(),
       },
     })
+    addRateLimitHeaders(response, rateLimit)
+    return response
   } catch (error) {
     console.error("[Earnings API] Error:", error)
     return NextResponse.json({

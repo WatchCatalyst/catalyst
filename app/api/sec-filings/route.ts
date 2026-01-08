@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { checkRateLimit, addRateLimitHeaders, rateLimitResponse, RATE_LIMIT_CONFIG } from "@/lib/rate-limit"
+import { validateTicker, validateInteger, sanitizeString } from "@/lib/input-validation"
 
 export interface SECFiling {
   symbol: string
@@ -9,11 +11,22 @@ export interface SECFiling {
   description?: string
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Rate limiting
+  const rateLimit = checkRateLimit(request, RATE_LIMIT_CONFIG.api)
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit.resetAt)
+  }
+
   const { searchParams } = new URL(request.url)
-  const symbol = searchParams.get("symbol") || ""
-  const formType = searchParams.get("form") || "" // e.g., "10-K", "8-K", "4"
-  const limit = parseInt(searchParams.get("limit") || "50")
+  const symbolParam = searchParams.get("symbol") || ""
+  const formTypeParam = searchParams.get("form") || ""
+  const limitParam = searchParams.get("limit") || "50"
+  
+  // Validate input
+  const symbol = symbolParam ? validateTicker(symbolParam) || "" : ""
+  const formType = sanitizeString(formTypeParam)
+  const limit = validateInteger(limitParam, 1, 100) || 50
   
   const FMP_KEY = process.env.FMP_API_KEY
 
@@ -75,12 +88,14 @@ export async function GET(request: Request) {
 
     console.log(`[SEC Filings API] ✅ Got ${filings.length} filings`)
 
-    return NextResponse.json({
+    const jsonResponse = NextResponse.json({
       success: true,
       data: filings,
       timestamp: new Date().toISOString(),
       count: filings.length,
     })
+    addRateLimitHeaders(jsonResponse, rateLimit)
+    return jsonResponse
   } catch (error) {
     console.error("[SEC Filings API] Error:", error)
     return NextResponse.json({
