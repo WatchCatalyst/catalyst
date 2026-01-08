@@ -578,7 +578,7 @@ export default function Home() {
               {/* Logo */}
               <div className="flex items-center gap-2">
                 <Image
-                  src="/images/design-mode/41e2a965-c253-492a-8fe2-706b2c00606a.png"
+                  src="/favicon.png"
                   alt="WatchCatalyst"
                   width={24}
                   height={24}
