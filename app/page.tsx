@@ -978,6 +978,18 @@ export default function Home() {
         open={!!selectedArticle}
         onOpenChange={(open) => !open && setSelectedArticle(null)}
       />
+
+      {/* Footer Disclaimer */}
+      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-sm border-t border-white/10">
+        <div className="max-w-7xl mx-auto px-4 py-2">
+          <p className="text-[10px] sm:text-xs text-center text-muted-foreground">
+            <span className="text-yellow-500 font-semibold">⚠️ NOT FINANCIAL ADVICE</span>
+            {" — "}
+            This platform is for informational purposes only. Always conduct your own research (DYOR). 
+            Never invest more than you can afford to lose. Past performance is not indicative of future results.
+          </p>
+        </div>
+      </footer>
     </div>
   )
 }

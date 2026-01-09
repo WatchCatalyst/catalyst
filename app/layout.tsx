@@ -28,8 +28,37 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "WatchCatalyst - Real-time Trading News Intelligence",
   description:
-    "AI-powered news aggregation platform for crypto, stocks, and derivatives trading with sentiment analysis and trading signals",
-  generator: "v0.app",
+    "AI-powered news aggregation platform for crypto, stocks, and derivatives trading with sentiment analysis and trading signals. Track market-moving news in real-time.",
+  keywords: ["trading news", "crypto news", "stock market", "sentiment analysis", "trading signals", "market intelligence", "financial news"],
+  authors: [{ name: "WatchCatalyst" }],
+  creator: "WatchCatalyst",
+  publisher: "WatchCatalyst",
+  robots: {
+    index: true,
+    follow: true,
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://watchcatalyst.xyz",
+    siteName: "WatchCatalyst",
+    title: "WatchCatalyst - Real-time Trading News Intelligence",
+    description: "AI-powered news aggregation platform for crypto, stocks, and derivatives trading with sentiment analysis and trading signals.",
+    images: [
+      {
+        url: "/favicon.png",
+        width: 512,
+        height: 512,
+        alt: "WatchCatalyst Logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "WatchCatalyst - Real-time Trading News Intelligence",
+    description: "AI-powered news aggregation platform for crypto, stocks, and derivatives trading.",
+    images: ["/favicon.png"],
+  },
   icons: {
     icon: [
       {
