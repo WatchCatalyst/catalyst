@@ -22,8 +22,8 @@ const TIMEFRAMES: { label: string; value: Timeframe; limit: number }[] = [
 
 const SYMBOL_COLORS: Record<string, { up: string; down: string; accent: string }> = {
   BTC: { up: "#f7931a", down: "#ef4444", accent: "orange" },
-  ETH: { up: "#627eea", down: "#ef4444", accent: "blue" },
-  SOL: { up: "#9945FF", down: "#ef4444", accent: "purple" },
+  ETH: { up: "#38bdf8", down: "#ef4444", accent: "sky" },
+  SOL: { up: "#2dd4bf", down: "#ef4444", accent: "teal" },
 }
 
 export function LiveCryptoChart({ symbol, onPriceUpdate }: LiveCryptoChartProps) {
