@@ -756,12 +756,11 @@ export default function Home() {
                 className="p-2 text-zinc-500 hover:text-white transition-colors flex-shrink-0"
                 title="Join Discord"
               >
-                <Image
+                <img
                   src="/images/social/discord.png"
                   alt="Discord"
-                  width={16}
-                  height={16}
                   className="h-4 w-4 opacity-70 hover:opacity-100 transition-opacity"
+                  style={{ width: '16px', height: '16px' }}
                 />
               </a>
 
