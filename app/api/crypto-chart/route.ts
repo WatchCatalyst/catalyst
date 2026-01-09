@@ -32,20 +32,42 @@ export async function GET(request: NextRequest) {
   const limit = TIMEFRAME_LIMITS[interval]
 
   try {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit}`
-    
-    const response = await fetch(url, {
-      headers: {
-        "Accept": "application/json",
-      },
-      next: { revalidate: 10 }, // Cache for 10 seconds
-    })
+    // Try Binance.US first (for US users), then fallback to Binance.com
+    const endpoints = [
+      `https://api.binance.us/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit}`,
+      `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit}`,
+    ]
 
-    if (!response.ok) {
-      console.error(`[Crypto Chart API] Binance error: ${response.status}`)
+    let response: Response | null = null
+    let lastError: string = ""
+
+    for (const url of endpoints) {
+      try {
+        console.log(`[Crypto Chart API] Trying: ${url}`)
+        const res = await fetch(url, {
+          headers: {
+            "Accept": "application/json",
+          },
+        })
+        
+        if (res.ok) {
+          response = res
+          break
+        } else {
+          lastError = `${res.status}`
+          console.warn(`[Crypto Chart API] ${url} returned ${res.status}`)
+        }
+      } catch (err) {
+        console.warn(`[Crypto Chart API] ${url} failed:`, err)
+        lastError = String(err)
+      }
+    }
+
+    if (!response) {
+      console.error(`[Crypto Chart API] All endpoints failed. Last error: ${lastError}`)
       return NextResponse.json(
-        { error: `Binance API error: ${response.status}` },
-        { status: response.status }
+        { error: `Failed to fetch from Binance: ${lastError}` },
+        { status: 502 }
       )
     }
 
