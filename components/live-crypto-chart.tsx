@@ -50,29 +50,32 @@ export function LiveCryptoChart({ symbol, onPriceUpdate }: LiveCryptoChartProps)
 
   const binanceSymbol = `${symbol.toUpperCase()}USDT`
 
-  // Fetch historical data
+  // Fetch historical data via our API route (avoids CORS)
   const fetchHistoricalData = useCallback(async (tf: Timeframe) => {
-    const tfConfig = TIMEFRAMES.find(t => t.value === tf) || TIMEFRAMES[0]
-    const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${tf}&limit=${tfConfig.limit}`
+    const url = `/api/crypto-chart?symbol=${symbol}&interval=${tf}`
     
     try {
       const response = await fetch(url)
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       
-      const data: BinanceKline[] = await response.json()
+      const result = await response.json()
       
-      return data.map((kline): CandlestickData => ({
-        time: (kline[0] / 1000) as any, // Convert to seconds for lightweight-charts
-        open: parseFloat(kline[1]),
-        high: parseFloat(kline[2]),
-        low: parseFloat(kline[3]),
-        close: parseFloat(kline[4]),
+      if (!result.success || !result.data) {
+        throw new Error(result.error || "No data returned")
+      }
+      
+      return result.data.map((candle: any): CandlestickData => ({
+        time: candle.time as any,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
       }))
     } catch (err) {
       console.error("[LiveChart] Failed to fetch historical data:", err)
       throw err
     }
-  }, [binanceSymbol])
+  }, [symbol])
 
   // Initialize chart
   useEffect(() => {
