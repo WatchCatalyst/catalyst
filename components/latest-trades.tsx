@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Info } from "lucide-react"
 import { getPoliticianTrades, type AlphaTrade } from "@/lib/alpha-service"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export function LatestTrades() {
   const [trades, setTrades] = useState<AlphaTrade[]>([])
@@ -63,7 +65,19 @@ export function LatestTrades() {
     <div className="bg-zinc-950/50 rounded-lg border border-white/10 overflow-hidden">
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm">ALPHA TRACKER</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-sm">ALPHA TRACKER</h3>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[200px] text-xs">
+                  <p>Trades disclosed within 45 days per STOCK Act</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <span className="text-xs text-muted-foreground">🏛️ Senate</span>
         </div>
       </div>

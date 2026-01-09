@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Building2, TrendingUp, TrendingDown, Search, ExternalLink, RefreshCw } from "lucide-react"
+import { Building2, TrendingUp, TrendingDown, Search, ExternalLink, RefreshCw, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { CongressTrade } from "@/app/api/congress/trades/route"
 
 interface CongressTrackerProps {
@@ -115,9 +116,19 @@ export function CongressTracker({ portfolio = [] }: CongressTrackerProps) {
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-accent-bright" />
             <h3 className="font-semibold text-sm">Capitol Trades</h3>
-            <Badge variant="secondary" className="text-xs">
-              Live
-            </Badge>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="secondary" className="text-xs cursor-help flex items-center gap-1">
+                    Latest
+                    <Info className="h-3 w-3" />
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[250px] text-xs">
+                  <p>Congress members have up to <strong>45 days</strong> to disclose trades. Data shown is the most recent available.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             {lastUpdated && (
               <span className="text-[10px] text-muted-foreground">
                 Updated {Math.floor((Date.now() - lastUpdated.getTime()) / 1000 / 60)}m ago
