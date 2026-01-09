@@ -29,6 +29,7 @@ import { CryptoPrices } from "@/components/crypto-prices"
 import { SocialSentiment } from "@/components/social-sentiment"
 import { MagneticButton } from "@/components/magnetic-button"
 import { AuthButton } from "@/components/auth-button"
+import { CryptoChartModal } from "@/components/crypto-chart-modal"
 
 export type NewsCategoryType = "all" | "crypto" | "stocks" | "war" | "technology" | "politics" | "animals" | "sports"
 
@@ -122,6 +123,7 @@ export default function Home() {
     ETH: { price: number; change: number } | null
   }>({ SOL: null, BTC: null, ETH: null })
   const [logoErrors, setLogoErrors] = useState<{ [key: string]: boolean }>({})
+  const [chartSymbol, setChartSymbol] = useState<"BTC" | "ETH" | "SOL" | null>(null)
 
   const loadPreferences = () => {
     const savedPrefs = localStorage.getItem("watchcatalyst-preferences")
@@ -593,11 +595,15 @@ export default function Home() {
               {/* Divider */}
               <div className="hidden lg:block h-4 w-px bg-white/20" />
               
-              {/* Live Price Tickers - Matching Reference Style */}
+              {/* Live Price Tickers - Clickable to open charts */}
               <div className="hidden lg:flex items-center gap-5">
                 {/* Solana */}
                 {headerPrices.SOL && (
-                  <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setChartSymbol("SOL")}
+                    className="flex items-center gap-2 px-2 py-1 -mx-2 -my-1 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+                    title="Click to view SOL chart"
+                  >
                     {logoErrors.solana ? (
                       <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#9945FF] to-[#14F195] flex items-center justify-center">
                         <span className="text-white text-[10px] font-bold">S</span>
@@ -622,12 +628,16 @@ export default function Home() {
                     <span className={`font-mono text-xs ${headerPrices.SOL.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                       {headerPrices.SOL.change >= 0 ? '+' : ''}{headerPrices.SOL.change.toFixed(1)}%
                     </span>
-                  </div>
+                  </button>
                 )}
                 
                 {/* Bitcoin */}
                 {headerPrices.BTC && (
-                  <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setChartSymbol("BTC")}
+                    className="flex items-center gap-2 px-2 py-1 -mx-2 -my-1 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+                    title="Click to view BTC chart"
+                  >
                     {logoErrors.bitcoin ? (
                       <div className="w-5 h-5 rounded-full bg-[#F7931A] flex items-center justify-center">
                         <span className="text-white text-[10px] font-bold">₿</span>
@@ -652,12 +662,16 @@ export default function Home() {
                     <span className={`font-mono text-xs ${headerPrices.BTC.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                       {headerPrices.BTC.change >= 0 ? '+' : ''}{headerPrices.BTC.change.toFixed(1)}%
                     </span>
-                  </div>
+                  </button>
                 )}
                 
                 {/* Ethereum */}
                 {headerPrices.ETH && (
-                  <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setChartSymbol("ETH")}
+                    className="flex items-center gap-2 px-2 py-1 -mx-2 -my-1 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+                    title="Click to view ETH chart"
+                  >
                     {logoErrors.ethereum ? (
                       <div className="w-5 h-5 rounded-full bg-[#627EEA] flex items-center justify-center">
                         <span className="text-white text-[10px] font-bold">Ξ</span>
@@ -682,7 +696,7 @@ export default function Home() {
                     <span className={`font-mono text-xs ${headerPrices.ETH.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                       {headerPrices.ETH.change >= 0 ? '+' : ''}{headerPrices.ETH.change.toFixed(1)}%
                     </span>
-                  </div>
+                  </button>
                 )}
               </div>
             </div>
@@ -977,6 +991,13 @@ export default function Home() {
         news={selectedArticle}
         open={!!selectedArticle}
         onOpenChange={(open) => !open && setSelectedArticle(null)}
+      />
+
+      {/* Live Crypto Chart Modal */}
+      <CryptoChartModal
+        symbol={chartSymbol}
+        open={!!chartSymbol}
+        onOpenChange={(open) => !open && setChartSymbol(null)}
       />
 
       {/* Footer Disclaimer */}
