@@ -580,9 +580,10 @@ export default function Home() {
                 <Image
                   src="/favicon.png"
                   alt="WatchCatalyst"
-                  width={24}
-                  height={24}
+                  width={32}
+                  height={32}
                   className="rounded"
+                  priority
                 />
                 <h1 className="text-sm font-bold text-white whitespace-nowrap tracking-tight">
                   WATCH<span className="gradient-text-cyan text-glow-cyan">CATALYST</span>
