@@ -69,8 +69,9 @@ export async function GET(request: NextRequest) {
       const apiKey = process.env.FINNHUB_API_KEY
 
       if (!apiKey) {
+        console.warn(`[API] FINNHUB_API_KEY not configured for stock chart: ${symbol}`)
         return NextResponse.json(
-          { error: "API key not configured" },
+          { error: "Stock chart data requires FINNHUB_API_KEY to be configured in environment variables." },
           { status: 500 }
         )
       }
@@ -95,8 +96,20 @@ export async function GET(request: NextRequest) {
 
       const data = await response.json()
 
-      if (data.s !== "ok" || !Array.isArray(data.c) || data.c.length === 0) {
-        return NextResponse.json({ error: "No chart data available" }, { status: 404 })
+      if (data.s !== "ok") {
+        const errorMsg = data.s === "no_data" 
+          ? `No stock data available for ${symbol}. Symbol may be invalid or delisted.`
+          : data.s === "error"
+            ? `Finnhub API error: ${data.error || "Unknown error"}`
+            : `No chart data available for ${symbol}`
+        console.warn(`[API] Finnhub API returned status '${data.s}' for ${symbol}`)
+        return NextResponse.json({ error: errorMsg }, { status: 404 })
+      }
+
+      if (!Array.isArray(data.c) || data.c.length === 0) {
+        return NextResponse.json({ 
+          error: `No historical data available for ${symbol}. The symbol may be too new or not actively traded.` 
+        }, { status: 404 })
       }
 
       const result = []

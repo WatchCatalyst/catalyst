@@ -29,6 +29,7 @@ export function LiveStockChart({ symbol, onPriceUpdate }: LiveStockChartProps) {
   const [priceChange, setPriceChange] = useState<number>(0)
   const [highPrice, setHighPrice] = useState<number | null>(null)
   const [lowPrice, setLowPrice] = useState<number | null>(null)
+  const [retryKey, setRetryKey] = useState(0) // Force reload when changed
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const colors = STOCK_COLORS[symbol] || STOCK_COLORS.AAPL
@@ -39,27 +40,39 @@ export function LiveStockChart({ symbol, onPriceUpdate }: LiveStockChartProps) {
     
     try {
       const response = await fetch(url)
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      
       const result = await response.json()
       
-      if (result.error || !result.data || result.data.length === 0) {
-        throw new Error(result.error || "No chart data available")
+      // Check for error response (either HTTP error or API error)
+      if (!response.ok || result.error) {
+        const errorMsg = result.error || `HTTP ${response.status}: ${response.statusText}`
+        console.error(`[StockChart] API error for ${symbol}:`, errorMsg)
+        throw new Error(errorMsg)
       }
       
-      // The API returns { data: [...] } format
+      // The API returns { data: [...] } format for stocks
+      if (!result.data || !Array.isArray(result.data) || result.data.length === 0) {
+        throw new Error("No chart data available. Please check if FINNHUB_API_KEY is configured.")
+      }
+      
       const chartData = result.data
       
-      return chartData.map((candle: any): CandlestickData => ({
-        time: candle.time as any,
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
-      }))
-    } catch (err) {
-      console.error("[StockChart] Failed to fetch data:", err)
-      throw err
+      return chartData.map((candle: any): CandlestickData => {
+        // Ensure time is in YYYY-MM-DD format (lightweight-charts expects this)
+        const timeStr = typeof candle.time === 'string' 
+          ? candle.time.split('T')[0]  // Handle ISO strings
+          : candle.time
+        
+        return {
+          time: timeStr as any,
+          open: Number(candle.open),
+          high: Number(candle.high),
+          low: Number(candle.low),
+          close: Number(candle.close),
+        }
+      })
+    } catch (err: any) {
+      console.error(`[StockChart] Failed to fetch data for ${symbol}:`, err)
+      throw new Error(err.message || "Failed to load chart data. Please check your API configuration.")
     }
   }, [symbol])
 
@@ -236,9 +249,10 @@ export function LiveStockChart({ symbol, onPriceUpdate }: LiveStockChartProps) {
       mounted = false
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
       }
     }
-  }, [symbol, fetchHistoricalData, onPriceUpdate])
+  }, [symbol, fetchHistoricalData, onPriceUpdate, retryKey]) // Add retryKey to dependencies
 
   const formatPrice = (price: number) => {
     return price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -312,11 +326,21 @@ export function LiveStockChart({ symbol, onPriceUpdate }: LiveStockChartProps) {
         )}
         
         {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-10">
-            <p className="text-red-500 text-sm">{error}</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-10 p-4">
+            <p className="text-red-400 text-sm text-center mb-2 max-w-md">{error}</p>
+            <p className="text-xs text-muted-foreground text-center mb-4 max-w-md">
+              {error.includes("FINNHUB_API_KEY") 
+                ? "Stock charts require a Finnhub API key. Please configure FINNHUB_API_KEY in your environment variables."
+                : "Please verify the symbol is correct and try again."}
+            </p>
             <button 
-              onClick={() => window.location.reload()}
-              className="mt-3 px-4 py-2 text-xs bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+              onClick={() => {
+                setError(null)
+                setLoading(true)
+                // Trigger reload by incrementing retryKey (this will re-run the useEffect)
+                setRetryKey(prev => prev + 1)
+              }}
+              className="px-4 py-2 text-xs bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
             >
               Retry
             </button>
