@@ -88,13 +88,16 @@ export async function GET(request: NextRequest) {
       })
 
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error(`[API] Finnhub API error for ${symbol}:`, response.status, response.statusText, errorText)
         return NextResponse.json(
-          { error: `API error: ${response.status}` },
+          { error: `API error: ${response.status} ${response.statusText}` },
           { status: response.status }
         )
       }
 
       const data = await response.json()
+      console.log(`[API] Finnhub response for ${symbol}:`, { status: data.s, dataLength: data.c?.length || 0 })
 
       if (data.s !== "ok") {
         const errorMsg = data.s === "no_data" 
