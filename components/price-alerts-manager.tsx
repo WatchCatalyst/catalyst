@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { Bell, Plus, X, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"
+import { Bell, Plus, X, TrendingUp, TrendingDown, AlertTriangle, Newspaper } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -22,18 +22,27 @@ type PriceAlert = {
   id: string
   symbol: string
   asset_type: "crypto" | "stock"
-  alert_type: "above" | "below" | "change_percent"
+  alert_type: "above" | "below" | "change_percent" | "news"
   target_price?: number
   change_percent?: number
   is_active: boolean
   last_triggered_at?: string
+  last_article_id?: string // Track last article that triggered news alert
+}
+
+type NewsItem = {
+  id: string
+  title: string
+  summary: string
+  keywords?: string[]
 }
 
 type PriceAlertsManagerProps = {
   portfolio: Array<{ symbol: string; type: string }>
+  news?: NewsItem[] // Pass current news items to check for ticker matches
 }
 
-export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
+export function PriceAlertsManager({ portfolio, news = [] }: PriceAlertsManagerProps) {
   const [alerts, setAlerts] = useState<PriceAlert[]>([])
   const [newAlert, setNewAlert] = useState<Partial<PriceAlert>>({
     symbol: "",
@@ -49,6 +58,58 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
     loadAlerts()
   }, [])
 
+  // Check news items for ticker matches (news alerts)
+  useEffect(() => {
+    if (news.length === 0 || alerts.length === 0) return
+
+    const newsAlerts = alerts.filter(a => a.alert_type === "news" && a.is_active)
+    if (newsAlerts.length === 0) return
+
+    let hasUpdates = false
+    const updatedAlerts = alerts.map(alert => {
+      if (alert.alert_type !== "news" || !alert.is_active) return alert
+
+      const matchingArticles = news.filter(article => {
+        const ticker = `$${alert.symbol}`
+        const title = article.title?.toLowerCase() || ""
+        const summary = article.summary?.toLowerCase() || ""
+        const keywords = article.keywords?.join(" ").toLowerCase() || ""
+        const searchText = `${title} ${summary} ${keywords}`
+        
+        // Check if ticker symbol appears in article
+        return searchText.includes(alert.symbol.toLowerCase()) || 
+               searchText.includes(ticker.toLowerCase())
+      })
+
+      if (matchingArticles.length > 0) {
+        // Find the most recent article
+        const latestArticle = matchingArticles[0]
+        
+        // Only trigger if this is a new article (different ID)
+        if (latestArticle.id !== alert.last_article_id) {
+          hasUpdates = true
+          toast({
+            title: `News Alert: ${alert.symbol}`,
+            description: `New article about $${alert.symbol} - ${latestArticle.title.substring(0, 60)}...`,
+            duration: 5000,
+          })
+          
+          return { 
+            ...alert, 
+            last_triggered_at: new Date().toISOString(), 
+            last_article_id: latestArticle.id 
+          }
+        }
+      }
+      return alert
+    })
+
+    if (hasUpdates) {
+      setAlerts(updatedAlerts)
+      localStorage.setItem("watchcatalyst-alerts", JSON.stringify(updatedAlerts))
+    }
+  }, [news]) // Only depend on news, alerts are managed via setState
+
   const loadAlerts = () => {
     const saved = localStorage.getItem("watchcatalyst-alerts")
     if (saved) {
@@ -56,9 +117,11 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
     }
   }
 
-  const saveAlerts = (updatedAlerts: PriceAlert[]) => {
+  const saveAlerts = (updatedAlerts: PriceAlert[], showToast = true) => {
     localStorage.setItem("watchcatalyst-alerts", JSON.stringify(updatedAlerts))
-    toast({ title: "Alerts saved" })
+    if (showToast) {
+      toast({ title: "Alerts saved" })
+    }
   }
 
   const addAlert = async () => {
@@ -67,14 +130,17 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
       return
     }
 
-    if (newAlert.alert_type !== "change_percent" && !newAlert.target_price) {
-      toast({ title: "Please enter a target price", variant: "destructive" })
-      return
-    }
+    // News alerts don't need price/percent
+    if (newAlert.alert_type !== "news") {
+      if (newAlert.alert_type !== "change_percent" && !newAlert.target_price) {
+        toast({ title: "Please enter a target price", variant: "destructive" })
+        return
+      }
 
-    if (newAlert.alert_type === "change_percent" && !newAlert.change_percent) {
-      toast({ title: "Please enter a percentage", variant: "destructive" })
-      return
+      if (newAlert.alert_type === "change_percent" && !newAlert.change_percent) {
+        toast({ title: "Please enter a percentage", variant: "destructive" })
+        return
+      }
     }
 
     const alertToAdd: PriceAlert = {
@@ -100,7 +166,8 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
       is_active: true,
     })
 
-    toast({ title: `Price alert set for ${alertToAdd.symbol}` })
+    const alertTypeLabel = alertToAdd.alert_type === "news" ? "News alert" : "Price alert"
+    toast({ title: `${alertTypeLabel} set for ${alertToAdd.symbol}` })
   }
 
   const toggleAlert = (id: string) => {
@@ -130,9 +197,12 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
       return `Alert when price goes above $${alert.target_price?.toLocaleString()}`
     } else if (alert.alert_type === "below") {
       return `Alert when price drops below $${alert.target_price?.toLocaleString()}`
-    } else {
+    } else if (alert.alert_type === "change_percent") {
       return `Alert when price changes ${alert.change_percent}% or more`
+    } else if (alert.alert_type === "news") {
+      return `Alert when news about $${alert.symbol} is published`
     }
+    return ""
   }
 
   const activeAlerts = alerts.filter((a) => a.is_active).length
@@ -153,10 +223,10 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5" />
-            Price Alerts & Notifications
+            Alerts & Notifications
           </DialogTitle>
           <DialogDescription>
-            Set price thresholds and get notified when your portfolio holdings hit key levels
+            Set price thresholds and news alerts to monitor your portfolio holdings
           </DialogDescription>
         </DialogHeader>
 
@@ -215,11 +285,12 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
                     onChange={(e) =>
                       setNewAlert({
                         ...newAlert,
-                        alert_type: e.target.value as "above" | "below" | "change_percent",
+                        alert_type: e.target.value as "above" | "below" | "change_percent" | "news",
                       })
                     }
                     className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm h-10"
                   >
+                    <option value="news">News Alert</option>
                     <option value="above">Price Above</option>
                     <option value="below">Price Below</option>
                     <option value="change_percent">% Change</option>
@@ -227,47 +298,64 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                {newAlert.alert_type !== "change_percent" ? (
-                  <div>
-                    <Label className="text-xs mb-1">Target Price ($)</Label>
-                    <Input
-                      type="number"
-                      placeholder="50000"
-                      value={newAlert.target_price || ""}
-                      onChange={(e) =>
-                        setNewAlert({
-                          ...newAlert,
-                          target_price: e.target.value ? Number(e.target.value) : undefined,
-                        })
-                      }
-                      className="text-sm"
-                    />
+              {newAlert.alert_type === "news" ? (
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+                    <Newspaper className="h-4 w-4 text-blue-400" />
+                    <p className="text-xs text-muted-foreground">
+                      You'll be notified when news articles mention ${newAlert.symbol || "SYMBOL"}
+                    </p>
                   </div>
-                ) : (
-                  <div>
-                    <Label className="text-xs mb-1">Change Percent (%)</Label>
-                    <Input
-                      type="number"
-                      placeholder="5"
-                      value={newAlert.change_percent || ""}
-                      onChange={(e) =>
-                        setNewAlert({
-                          ...newAlert,
-                          change_percent: e.target.value ? Number(e.target.value) : undefined,
-                        })
-                      }
-                      className="text-sm"
-                    />
+                  <div className="flex items-end">
+                    <Button onClick={addAlert} className="w-full">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Create News Alert
+                    </Button>
                   </div>
-                )}
-                <div className="flex items-end">
-                  <Button onClick={addAlert} className="w-full">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Create Alert
-                  </Button>
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {newAlert.alert_type !== "change_percent" ? (
+                    <div>
+                      <Label className="text-xs mb-1">Target Price ($)</Label>
+                      <Input
+                        type="number"
+                        placeholder="50000"
+                        value={newAlert.target_price || ""}
+                        onChange={(e) =>
+                          setNewAlert({
+                            ...newAlert,
+                            target_price: e.target.value ? Number(e.target.value) : undefined,
+                          })
+                        }
+                        className="text-sm"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <Label className="text-xs mb-1">Change Percent (%)</Label>
+                      <Input
+                        type="number"
+                        placeholder="5"
+                        value={newAlert.change_percent || ""}
+                        onChange={(e) =>
+                          setNewAlert({
+                            ...newAlert,
+                            change_percent: e.target.value ? Number(e.target.value) : undefined,
+                          })
+                        }
+                        className="text-sm"
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-end">
+                    <Button onClick={addAlert} className="w-full">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Create Alert
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -321,6 +409,7 @@ export function PriceAlertsManager({ portfolio }: PriceAlertsManagerProps) {
                             <Badge variant="outline" className="text-[10px]">
                               {alert.asset_type}
                             </Badge>
+                            {alert.alert_type === "news" && <Newspaper className="h-3 w-3 text-blue-400" />}
                             {alert.alert_type === "above" && <TrendingUp className="h-3 w-3 text-success" />}
                             {alert.alert_type === "below" && <TrendingDown className="h-3 w-3 text-danger" />}
                             {alert.alert_type === "change_percent" && (

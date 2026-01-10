@@ -30,6 +30,7 @@ import { SocialSentiment } from "@/components/social-sentiment"
 import { MagneticButton } from "@/components/magnetic-button"
 import { AuthButton } from "@/components/auth-button"
 import { CryptoChartModal } from "@/components/crypto-chart-modal"
+import { StockChartModal } from "@/components/stock-chart-modal"
 
 export type NewsCategoryType = "all" | "crypto" | "stocks" | "war" | "technology" | "politics" | "animals" | "sports"
 
@@ -124,6 +125,7 @@ export default function Home() {
   }>({ SOL: null, BTC: null, ETH: null })
   const [logoErrors, setLogoErrors] = useState<{ [key: string]: boolean }>({})
   const [chartSymbol, setChartSymbol] = useState<"BTC" | "ETH" | "SOL" | null>(null)
+  const [stockChartSymbol, setStockChartSymbol] = useState<string | null>(null)
 
   const loadPreferences = () => {
     const savedPrefs = localStorage.getItem("watchcatalyst-preferences")
@@ -196,15 +198,25 @@ export default function Home() {
         }
       }
     }
+    const handleOpenArticle = (e: Event) => {
+      const customEvent = e as CustomEvent<{ article: NewsItem }>
+      const article = customEvent.detail?.article
+      if (article) {
+        // Update the selected article (modal will re-render with new content)
+        setSelectedArticle(article)
+      }
+    }
     window.addEventListener("preferences-updated", handlePreferencesUpdate as EventListener)
     window.addEventListener("portfolio-updated", handlePortfolioUpdate as EventListener)
     window.addEventListener("watchlist-symbol-clicked", handleWatchlistSymbolClick as EventListener)
+    window.addEventListener("open-article", handleOpenArticle as EventListener)
 
     return () => {
       window.removeEventListener("storage", handleStorageChange)
       window.removeEventListener("preferences-updated", handlePreferencesUpdate as EventListener)
       window.removeEventListener("portfolio-updated", handlePortfolioUpdate as EventListener)
       window.removeEventListener("watchlist-symbol-clicked", handleWatchlistSymbolClick as EventListener)
+      window.removeEventListener("open-article", handleOpenArticle as EventListener)
     }
   }, [])
 
@@ -698,6 +710,36 @@ export default function Home() {
                     </span>
                   </button>
                 )}
+
+                {/* Stock Tickers - Clickable to open charts */}
+                <div className="h-4 w-px bg-white/20 mx-1" />
+                
+                {/* Apple */}
+                <button 
+                  onClick={() => setStockChartSymbol("AAPL")}
+                  className="flex items-center gap-2 px-2 py-1 -mx-2 -my-1 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Click to view AAPL chart"
+                >
+                  <span className="text-white font-mono text-sm font-semibold">AAPL</span>
+                </button>
+
+                {/* Tesla */}
+                <button 
+                  onClick={() => setStockChartSymbol("TSLA")}
+                  className="flex items-center gap-2 px-2 py-1 -mx-2 -my-1 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Click to view TSLA chart"
+                >
+                  <span className="text-white font-mono text-sm font-semibold">TSLA</span>
+                </button>
+
+                {/* NVIDIA */}
+                <button 
+                  onClick={() => setStockChartSymbol("NVDA")}
+                  className="flex items-center gap-2 px-2 py-1 -mx-2 -my-1 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Click to view NVDA chart"
+                >
+                  <span className="text-white font-mono text-sm font-semibold">NVDA</span>
+                </button>
               </div>
             </div>
 
@@ -739,7 +781,7 @@ export default function Home() {
               </a>
 
               {/* Nav Links */}
-              <PriceAlertsManager portfolio={portfolio} />
+              <PriceAlertsManager portfolio={portfolio} news={news} />
               <PortfolioManager onPortfolioChange={(assets) => setPortfolio(assets)} />
               <SettingsDialog />
 
@@ -1006,6 +1048,7 @@ export default function Home() {
 
       <ArticleDetailModal
         news={selectedArticle}
+        allNews={news}
         open={!!selectedArticle}
         onOpenChange={(open) => !open && setSelectedArticle(null)}
       />
@@ -1015,6 +1058,13 @@ export default function Home() {
         symbol={chartSymbol}
         open={!!chartSymbol}
         onOpenChange={(open) => !open && setChartSymbol(null)}
+      />
+
+      {/* Stock Chart Modal */}
+      <StockChartModal
+        symbol={stockChartSymbol}
+        open={!!stockChartSymbol}
+        onOpenChange={(open) => !open && setStockChartSymbol(null)}
       />
 
       {/* Footer Disclaimer */}

@@ -9,18 +9,79 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react'
+import { ExternalLink, TrendingUp, TrendingDown, Minus, Clock, Newspaper } from 'lucide-react'
 import type { NewsItem } from "@/app/page"
-import { linkifyTickers } from "@/lib/ticker-detection"
+import { linkifyTickers, detectTickers } from "@/lib/ticker-detection"
+import { NewsCard } from "@/components/news-card"
 
 type ArticleDetailModalProps = {
   news: NewsItem | null
+  allNews?: NewsItem[] // All news items to find related articles
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function ArticleDetailModal({ news, open, onOpenChange }: ArticleDetailModalProps) {
+export function ArticleDetailModal({ news, allNews = [], open, onOpenChange }: ArticleDetailModalProps) {
   if (!news) return null
+
+  // Find related articles
+  const findRelatedArticles = (): NewsItem[] => {
+    if (!allNews || allNews.length === 0) return []
+
+    const currentTickers = detectTickers(`${news.title} ${news.summary}`).map(t => t.symbol.toUpperCase())
+    const currentKeywords = news.keywords || []
+    const currentTopics = news.topics || []
+    
+    const related = allNews
+      .filter(article => article.id !== news.id) // Exclude current article
+      .map(article => {
+        let score = 0
+        
+        // Check for same tickers
+        const articleTickers = detectTickers(`${article.title} ${article.summary}`).map(t => t.symbol.toUpperCase())
+        const commonTickers = currentTickers.filter(t => articleTickers.includes(t))
+        if (commonTickers.length > 0) {
+          score += commonTickers.length * 30 // High weight for ticker matches
+        }
+        
+        // Check for same category
+        if (article.category === news.category) {
+          score += 20
+        }
+        
+        // Check for common keywords
+        const articleKeywords = article.keywords || []
+        const commonKeywords = currentKeywords.filter(k => articleKeywords.includes(k))
+        if (commonKeywords.length > 0) {
+          score += commonKeywords.length * 15
+        }
+        
+        // Check for common topics
+        const articleTopics = article.topics || []
+        const commonTopics = currentTopics.filter(t => articleTopics.includes(t))
+        if (commonTopics.length > 0) {
+          score += commonTopics.length * 20
+        }
+        
+        // Check title similarity (simple word matching)
+        const currentTitleWords = news.title.toLowerCase().split(/\s+/)
+        const articleTitleWords = article.title.toLowerCase().split(/\s+/)
+        const commonWords = currentTitleWords.filter(w => w.length > 3 && articleTitleWords.includes(w))
+        if (commonWords.length > 0) {
+          score += commonWords.length * 5
+        }
+        
+        return { article, score }
+      })
+      .filter(item => item.score > 0) // Only include articles with some relevance
+      .sort((a, b) => b.score - a.score) // Sort by relevance
+      .slice(0, 6) // Top 6 related articles
+      .map(item => item.article)
+    
+    return related
+  }
+
+  const relatedArticles = findRelatedArticles()
 
   const getSentimentIcon = () => {
     switch (news.sentiment) {
@@ -128,6 +189,72 @@ export function ArticleDetailModal({ news, open, onOpenChange }: ArticleDetailMo
             </Button>
           </div>
         </div>
+
+        {/* Related Articles Section */}
+        {relatedArticles.length > 0 && (
+          <div className="mt-6 pt-6 border-t border-border">
+            <div className="flex items-center gap-2 mb-4">
+              <Newspaper className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold text-foreground">Related Articles</h3>
+              <Badge variant="secondary" className="text-[10px]">
+                {relatedArticles.length}
+              </Badge>
+            </div>
+            <div className="space-y-3 max-h-[300px] overflow-y-auto">
+              {relatedArticles.map((article) => (
+                <div
+                  key={article.id}
+                  onClick={() => {
+                    // Dispatch event to open this article (parent will handle state update)
+                    window.dispatchEvent(
+                      new CustomEvent("open-article", { detail: { article } })
+                    )
+                    // Scroll to top of modal content
+                    const modalContent = document.querySelector('[role="dialog"]')
+                    if (modalContent) {
+                      modalContent.scrollTo({ top: 0, behavior: 'smooth' })
+                    }
+                  }}
+                  className="p-3 rounded-lg border border-border/50 hover:border-accent-bright/30 hover:bg-accent-bright/5 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <h4 className="text-sm font-medium text-foreground group-hover:text-accent-bright transition-colors line-clamp-2 flex-1">
+                      {linkifyTickers(article.title)}
+                    </h4>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] flex-shrink-0 ${
+                        article.sentiment === "bullish"
+                          ? "text-success border-success/30"
+                          : article.sentiment === "bearish"
+                            ? "text-danger border-danger/30"
+                            : ""
+                      }`}
+                    >
+                      {article.sentiment}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                    {article.summary.substring(0, 150)}...
+                  </p>
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <span>{article.source}</span>
+                    <span>•</span>
+                    <span>{formatTimestamp(article.timestamp)}</span>
+                    {article.category && (
+                      <>
+                        <span>•</span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {article.category}
+                        </Badge>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )
