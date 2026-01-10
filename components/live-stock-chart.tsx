@@ -40,13 +40,28 @@ export function LiveStockChart({ symbol, onPriceUpdate }: LiveStockChartProps) {
     
     try {
       const response = await fetch(url)
-      const result = await response.json()
       
-      // Check for error response (either HTTP error or API error)
-      if (!response.ok || result.error) {
-        const errorMsg = result.error || `HTTP ${response.status}: ${response.statusText}`
+      // Handle non-OK responses
+      if (!response.ok) {
+        let errorMsg = `HTTP ${response.status}: ${response.statusText}`
+        try {
+          const errorData = await response.json()
+          if (errorData.error) {
+            errorMsg = errorData.error
+          }
+        } catch {
+          // Response isn't JSON, use status text
+        }
         console.error(`[StockChart] API error for ${symbol}:`, errorMsg)
         throw new Error(errorMsg)
+      }
+      
+      const result = await response.json()
+      
+      // Check for error in response body
+      if (result.error) {
+        console.error(`[StockChart] API returned error for ${symbol}:`, result.error)
+        throw new Error(result.error)
       }
       
       // The API returns { data: [...] } format for stocks
@@ -235,9 +250,11 @@ export function LiveStockChart({ symbol, onPriceUpdate }: LiveStockChartProps) {
           }
         }, 30000) // 30 seconds
 
-      } catch (err) {
+      } catch (err: any) {
         if (mounted) {
-          setError("Failed to load chart data")
+          const errorMessage = err?.message || "Failed to load chart data"
+          console.error(`[StockChart] Error loading data for ${symbol}:`, err)
+          setError(errorMessage)
           setLoading(false)
         }
       }
