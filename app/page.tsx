@@ -21,6 +21,7 @@ import { PriceAlertsManager } from "@/components/price-alerts-manager"
 import { CongressTracker } from "@/components/congress-tracker"
 import { GovContractsTracker } from "@/components/gov-contracts-tracker"
 import { LatestTrades } from "@/components/latest-trades"
+import { OptionsFlowTracker } from "@/components/options-flow-tracker"
 import { SmartNotifications } from "@/components/smart-notifications"
 import { ContextChart } from "@/components/context-chart"
 import { EarningsCalendar } from "@/components/earnings-calendar"
@@ -1009,6 +1010,11 @@ export default function Home() {
             {/* Government Contracts - Quiver API */}
             <div className="max-h-[500px] overflow-hidden">
               <GovContractsTracker portfolio={portfolio} />
+            </div>
+
+            {/* Options Flow & Unusual Activity */}
+            <div className="max-h-[600px] overflow-hidden">
+              <OptionsFlowTracker autoRefresh={isLive} refreshInterval={30000} />
             </div>
 
             {news.length > 0 && (
